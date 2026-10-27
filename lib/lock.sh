@@ -6,7 +6,7 @@
 #              so they run one after another instead of fighting each other.
 # ==============================================================================
 
-LOCK_FILE="${LOCK_FILE:-/run/lock/homeserver-cron-scripts.lock}"
+LOCK_FILE="${LOCK_FILE:-/run/lock/homeserver-borgmatic.lock}"
 LOCK_WAIT="${LOCK_WAIT:-14400}" # seconds to wait for a running job to finish
 
 # Take the lock for the rest of the calling script's life. It is released

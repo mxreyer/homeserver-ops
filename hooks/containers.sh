@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${SCRIPT_DIR}/CONFIG.sh"
 source "${SCRIPT_DIR}/lib/docker.sh"
 
-STATE_DIR="${STATE_DIR:-/var/lib/homeserver-cron-scripts}"
+STATE_DIR="${STATE_DIR:-/var/lib/homeserver-borgmatic}"
 STOPPED_FILE="${STATE_DIR}/stopped-containers"
 
 case "${1:-}" in

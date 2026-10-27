@@ -27,7 +27,7 @@ source "${SCRIPT_DIR}/ping.sh"
 
 # === Configuration === #
 HEALTHCHECK_URL="${HCHK_CONTAINER_UPDATE:-}"
-STATE_DIR="${STATE_DIR:-/var/lib/homeserver-cron-scripts}"
+STATE_DIR="${STATE_DIR:-/var/lib/homeserver-borgmatic}"
 LAST_SUCCESS_FILE="${STATE_DIR}/last-backup-ok"
 MAX_BACKUP_AGE_H=26
 
