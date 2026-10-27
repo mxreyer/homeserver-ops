@@ -1,0 +1,7 @@
+logs
+*.borg-pass*
+CONFIG.sh
+.*swp
+*.swp
+.env
+.*.env
