@@ -12,7 +12,7 @@ STATE_DIR=""          # optional; defaults to /var/lib/homeserver-ops
 
 # Backup (borgmatic, via configure-borgmatic.sh)
 BORG_REPO_LOCAL=""    # local repository, e.g. /mnt/backup/homeserver
-BORG_REPO_OFFSITE=""  # offsite repository, e.g. ssh://user@host/./backups/homeserver
+BORG_REPO_OFFSITE=""  # offsite repository, e.g. ssh://borg-offsite/home/borg/backups/homeserver
 HCHK_SERVER_BACKUP="" # Healthchecks URL for the backup
 BORG_PASS_FILE=""     # optional; passphrase file, defaults to .borg-pass in this repository
 EXTRA_BACKUP_DIRS=""  # optional; space-separated directories to back up as well

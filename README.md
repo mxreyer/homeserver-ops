@@ -67,7 +67,7 @@ It fills `borgmatic/config.template.yaml` with your `CONFIG.sh` values, validate
 ```bash
 sudo borgmatic repo-create --encryption repokey
 ```
-Then restrict the server's access to the offsite repository to append-only, as described under [Protect the offsite copy](#protect-the-offsite-copy-append-only). Do this after `repo-create`, which needs normal access.
+Prepare the offsite machine first, as described under [Set up the offsite machine](#set-up-the-offsite-machine); its step 5 makes the offsite repository append-only after this `repo-create`.
 
 ### 5. Store the keys off the server (do not skip this)
 The repokey lives inside each repository, and the passphrase lives only on this server. If the server dies, you need **both** to read the offsite copy. Store the passphrase and the key export in a password manager or on paper:
@@ -131,14 +131,57 @@ The old per-service repositories (`<backup disk>/<service>/borg`) are untouched 
 sudo BORG_PASSCOMMAND="head -n 1 .borg-pass-<service>" borg list "<backup disk>/<service>/borg"
 ```
 
-## Protect the offsite copy (append-only)
-The server holds the borg passphrase and an SSH key for the offsite machine. An attacker who takes over the server, e.g. ransomware, could use them to delete the offsite archives too. To prevent that, the offsite machine lets the server's key only *add* to the repository.
+## Set up the offsite machine
+The offsite repository lives on another machine you reach over SSH, e.g. at a friend's or family member's place. If it is outside your network, make it reachable over SSH, e.g. via Tailscale. The server gets a dedicated SSH key that can do nothing but run borg on that one repository.
 
-**Setup, on the offsite machine:** in `~/.ssh/authorized_keys` of the user that owns the repository, prefix the server's key (root's, since borgmatic runs as root) with a forced command:
-```
-command="borg serve --append-only --restrict-to-repository /path/to/backups/homeserver",restrict ssh-ed25519 AAAA… root@homeserver
-```
-The key can then only run borg in append-only mode on that one repository, and the server cannot lift this restriction. Test it once from the server: `sudo borgmatic repo-list --repository offsite` should still work.
+1. **On the offsite machine:** install borg (same major version as on the server, `sudo apt install borgbackup`), create a user without a password and its backup folder:
+   ```bash
+   sudo adduser --disabled-password --gecos "" borg
+   sudo -u borg mkdir -p /home/borg/backups
+   ```
+2. **On the server:** create a dedicated key for root (borgmatic runs as root), without a passphrase so cron can use it, and a host alias for it:
+   ```bash
+   sudo ssh-keygen -t ed25519 -N "" -C "borg@homeserver" -f /root/.ssh/id_ed25519_borg
+   sudo tee -a /root/.ssh/config > /dev/null <<'END'
+   # HostName: the offsite machine's address
+   Host borg-offsite
+       HostName offsite.example
+       User borg
+       IdentityFile /root/.ssh/id_ed25519_borg
+       IdentitiesOnly yes
+   END
+   sudo cat /root/.ssh/id_ed25519_borg.pub   # copy this for the next step
+   ```
+3. **On the offsite machine:** allow that key to run nothing but borg, on that one repository. Append-only comes in step 5, after the repository has been created:
+   ```bash
+   sudo install -d -m 700 -o borg -g borg /home/borg/.ssh
+   echo 'command="borg serve --restrict-to-repository /home/borg/backups/homeserver",restrict ssh-ed25519 AAAA… borg@homeserver' \
+     | sudo tee /home/borg/.ssh/authorized_keys > /dev/null
+   sudo chown borg:borg /home/borg/.ssh/authorized_keys && sudo chmod 600 /home/borg/.ssh/authorized_keys
+   ```
+4. **On the server:**
+   - Connect once to confirm the offsite machine's host key (cron cannot answer that question later): `sudo ssh borg-offsite true`. Answer `yes`. It then prints borg's help text instead of running `true`, because the key may only run borg. That is expected.
+   - Set `BORG_REPO_OFFSITE="ssh://borg-offsite/home/borg/backups/homeserver"` in `CONFIG.sh`. The path must match the one in `authorized_keys` exactly.
+   - Run setup steps 3–4: `sudo ./configure-borgmatic.sh` and `sudo borgmatic repo-create --encryption repokey`.
+5. **On the offsite machine:** make the key append-only by adding `--append-only` to the forced command in `/home/borg/.ssh/authorized_keys`:
+   ```
+   command="borg serve --append-only --restrict-to-repository /home/borg/backups/homeserver",restrict ssh-ed25519 AAAA… borg@homeserver
+   ```
+6. **Harden SSH on the offsite machine:**
+   ```bash
+   printf 'PasswordAuthentication no\nPermitRootLogin no\n' | sudo tee /etc/ssh/sshd_config.d/01-hardening.conf
+   sudo sshd -T | grep -E '^(passwordauthentication|permitrootlogin) '   # both must say "no"
+   sudo systemctl reload ssh   # on Fedora: sshd
+   ```
+   The file name starts with `01-` on purpose: sshd uses the first value it reads, and many systems ship e.g. `50-cloud-init.conf` with `PasswordAuthentication yes`.
+   **Administer the offsite machine from another device** (e.g. your laptop) with a key that never sits on the server, and make sure no other key from the server is in any `authorized_keys` there. Otherwise an attacker on the server could bypass the restriction.
+7. **Test from the server:**
+   - `sudo borgmatic repo-list --repository offsite` lists the archives;
+   - `sudo ssh borg-offsite ls /` prints only borg's help text, no files;
+   - `sudo borg list ssh://borg-offsite/home/borg/backups/other` fails with "Repository path not allowed".
+
+## Protect the offsite copy (append-only)
+The server holds the borg passphrase and an SSH key for the offsite machine. An attacker who takes over the server, e.g. ransomware, could use them to delete the offsite archives too. That is why step 5 above makes the server's key append-only: it can only *add* to the repository, and the server cannot lift that restriction.
 
 **What changes:** the nightly backup and the checks work as before. But for the offsite repository:
 - `prune` and any `delete` only *hide* archives. They disappear from listings, but their data stays in the repository and can be restored by rolling back. borg records every change with a timestamp in the repository's `transactions` file.
@@ -147,7 +190,7 @@ The key can then only run borg in append-only mode on that one repository, and t
 **Compacting, every few months, on the offsite machine:**
 1. On the server, check the offsite archive list looks as expected: `sudo borgmatic repo-list --repository offsite` should show the recent daily, weekly and monthly archives.
 2. If archives are missing that the retention rules (7 daily, 4 weekly, 12 monthly) would have kept, **don't compact**: someone may have deleted them. Roll the repository back instead, following "Append-only mode" in borg's [usage notes](https://borgbackup.readthedocs.io/en/stable/usage/notes.html).
-3. Otherwise, as the repository owner on the offsite machine (not through the restricted key): `borg compact /path/to/backups/homeserver`. This makes the pruned deletions final and frees their space. It needs no passphrase.
+3. Otherwise, from your admin login on the offsite machine (not through the server's restricted key): `sudo -u borg borg compact /home/borg/backups/homeserver`. This makes the pruned deletions final and frees their space. It needs no passphrase.
 
 ## Files
 
