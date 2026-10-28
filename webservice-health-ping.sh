@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/CONFIG.sh"
 
 HEALTHCHECK_URL="$HCHK_WEBSERVICE_PING"
-source "${SCRIPT_DIR}/ping.sh"
+source "${SCRIPT_DIR}/lib/ping.sh"
 
 on_error() {
   echo "❌ webservice health check failed. 🛜 ping failure."

@@ -23,7 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/CONFIG.sh"
 source "${SCRIPT_DIR}/lib/lock.sh"
 source "${SCRIPT_DIR}/lib/docker.sh"
-source "${SCRIPT_DIR}/ping.sh"
+source "${SCRIPT_DIR}/lib/ping.sh"
 
 # === Configuration === #
 HEALTHCHECK_URL="${HCHK_CONTAINER_UPDATE:-}"

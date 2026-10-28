@@ -132,7 +132,7 @@ sudo BORG_PASSCOMMAND="head -n 1 .borg-pass-<service>" borg list "$BACKUP_LOC/<s
 | `exports/<service>.sh` | Database dumps and app exports, one per service |
 | `auto-container-update.sh` | `pull` + `up -d` for each running compose project, then `docker image prune` |
 | `server-health-ping.sh`, `webservice-health-ping.sh` | Healthchecks pings for the server and the web services |
-| `lib/docker.sh`, `lib/lock.sh`, `ping.sh` | Shared functions |
+| `lib/docker.sh`, `lib/lock.sh`, `lib/ping.sh` | Shared functions |
 
 ## Notes
 - **Pin major versions** in your compose files (e.g. `postgres:16`). `auto-container-update.sh` then applies only minor updates, and you do major upgrades by hand after reading the release notes.

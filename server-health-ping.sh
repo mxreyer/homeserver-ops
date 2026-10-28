@@ -12,15 +12,12 @@ set -o errtrace   # inherit ERR trap by functions, command subs, subshells
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/CONFIG.sh"
 
+source "${SCRIPT_DIR}/lib/ping.sh"
+
 # === Configuration ===
 HEALTHCHECK_URL="$HCHK_SERVER_PING"
 
-echo "----- 🛜 Pinging healthcheck at $(date) ⏰ -----"; 
+echo "----- 🛜 Pinging healthcheck at $(date) ⏰ -----"
 
-# === Ping healthcheck ===
-if ! curl -fsS --max-time 10 "$HEALTHCHECK_URL" >/dev/null; then
-  echo "⚠️ Healthcheck ping failed." >&2
-  exit 1
-fi
-
+ping_success || exit 1
 echo "✅ Healthcheck ping successful!"

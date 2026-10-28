@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# Script Name: ping.sh
+# Script Name: lib/ping.sh
 # Description: Provides functions to ping healthchecks
 # ==============================================================================
 

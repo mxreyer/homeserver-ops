@@ -17,7 +17,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${SCRIPT_DIR}/CONFIG.sh"
-source "${SCRIPT_DIR}/ping.sh"
+source "${SCRIPT_DIR}/lib/ping.sh"
 
 for service in ${WEB_SERVICES:-}; do
   script="${SCRIPT_DIR}/exports/${service}.sh"

@@ -26,7 +26,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/CONFIG.sh"
 source "${SCRIPT_DIR}/lib/lock.sh"
-source "${SCRIPT_DIR}/ping.sh"
+source "${SCRIPT_DIR}/lib/ping.sh"
 HEALTHCHECK_URL="${HCHK_SERVER_BACKUP:-}"
 
 STATE_DIR="${STATE_DIR:-/var/lib/homeserver-borgmatic}"
