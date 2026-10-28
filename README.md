@@ -43,6 +43,7 @@ There are no file system snapshots. Container data is consistent because the con
 - **borgmatic ≥ 2.0.** Use the distro package if it is recent enough; otherwise `sudo pipx install --global borgmatic` (see the [borgmatic install docs](https://torsion.org/borgmatic/docs/how-to/set-up-backups/)).
 - **Docker CE with compose v2.** podman is not supported.
 - `curl`, `jq`, `unzip`, `flock`.
+- `envsubst`, used by `configure-borgmatic.sh`: package `gettext-base` on Debian, Ubuntu and Raspberry Pi OS (usually preinstalled), `gettext-envsubst` or `gettext` on Fedora.
 - **Fedora:** Workstation has no cron daemon by default: `sudo dnf install cronie && sudo systemctl enable --now crond`.
 
 ### 2. Clone and configure the scripts
