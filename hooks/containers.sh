@@ -7,8 +7,8 @@
 #          before each repository's archive is created, so their data is
 #          backed up in a cleanly shut-down state. Fails if anything did not
 #          stop, which makes borgmatic abort before archiving.
-#   start  Starts them again. Idempotent; run after the create action, on
-#          error and on exit of backup.sh, so containers always come back.
+#   start  Starts them again. Idempotent; run after the create action and on
+#          error, so containers always come back.
 # ==============================================================================
 
 set -euo pipefail

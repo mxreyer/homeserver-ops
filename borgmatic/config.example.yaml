@@ -1,0 +1,114 @@
+# ==============================================================================
+# borgmatic configuration for homeserver-ops: one archive per run of the whole
+# server, including all docker volumes and bind mounts, written to a local and
+# an offsite repository.
+#
+# Install: copy to /etc/borgmatic/config.yaml (borgmatic's default location)
+# and adjust every line marked CHANGE. Requires borgmatic >= 2.0, borg >= 1.4.
+# Check with: sudo borgmatic config validate
+# ==============================================================================
+
+repositories:
+    - path: /mnt/backup/homeserver                     # CHANGE: local repository
+      label: local
+    - path: ssh://user@backup-host/./backups/homeserver  # CHANGE: offsite repository
+      label: offsite
+
+source_directories:
+    - /etc
+    - /home
+    - /root
+    - /usr/local
+    - /opt
+    - /var/lib            # includes docker's named volumes (/var/lib/docker/volumes)
+    - /var/spool/cron
+    - /boot
+    - /mnt
+    - /srv/docker         # CHANGE: root of the containers' bind mounts (DOCKER_BINDS_DIR)
+    # Add further directories to back up here.
+
+# Borg follows file systems mounted below these directories (e.g. /boot/efi,
+# /boot/firmware, a disk under /mnt). Exclude any that must not be backed up,
+# such as the backup disk itself or network mounts.
+exclude_patterns:
+    - /mnt/backup         # CHANGE: the local backup disk, if it is mounted below a source
+    # Docker's images, containers and caches; only its volumes are backed up
+    - /var/lib/docker/overlay2
+    - /var/lib/docker/image
+    - /var/lib/docker/containers
+    - /var/lib/docker/buildkit
+    - /var/lib/docker/tmp
+    - /var/lib/docker/network
+    - /var/lib/docker/plugins
+    - /var/lib/docker/runtimes
+    - /var/lib/docker/swarm
+    - /var/lib/docker/containerd
+    # Nextcloud AIO backs itself up with its own borg
+    - /var/lib/docker/volumes/nextcloud_aio_*
+    # Other container runtimes and system state that need no backup
+    - /var/lib/containers
+    - /var/lib/containerd
+    - /var/lib/rancher/k3s/agent
+    - /var/lib/flatpak
+    - /var/lib/systemd
+    - /var/lib/kubelet
+    - /var/lib/lxcfs      # virtual file system on hosts with LXD, like /proc
+    - /var/cache
+    - /var/tmp
+    # Immich can regenerate these
+    - /srv/docker/immich/library/thumbs          # CHANGE: bind root
+    - /srv/docker/immich/library/encoded-video   # CHANGE: bind root
+    # Add further paths or globs to exclude here.
+
+exclude_caches: true
+exclude_if_present:
+    - .nobackup
+source_directories_must_exist: true
+
+encryption_passcommand: cat /opt/homeserver-ops/.borg-pass   # CHANGE: passphrase file
+lock_wait: 600
+statistics: standard
+
+keep_daily: 7
+keep_weekly: 4
+keep_monthly: 12
+
+checks:
+    - name: repository
+      frequency: 2 weeks
+    - name: archives
+      frequency: 1 month
+    - name: data
+      frequency: 3 months
+
+# The hooks live in the homeserver-ops checkout. CHANGE /opt/homeserver-ops
+# below if it is cloned elsewhere.
+commands:
+    # Once per run, while all containers are still up
+    - before: configuration
+      when: [create]
+      run:
+          - /opt/homeserver-ops/hooks/pkglist.sh
+          - /opt/homeserver-ops/hooks/exports.sh
+    # Containers are down only while each repository's archive is written;
+    # prune, compact and check run with them up again
+    - before: action
+      when: [create]
+      run:
+          - /opt/homeserver-ops/hooks/containers.sh stop
+    - after: action
+      when: [create]
+      run:
+          - /opt/homeserver-ops/hooks/containers.sh start
+    - after: error
+      run:
+          - /opt/homeserver-ops/hooks/containers.sh start
+    # Record the successful backup that auto-container-update.sh requires
+    - after: configuration
+      when: [create]
+      states: [finish]
+      run:
+          - /opt/homeserver-ops/hooks/backup-ok.sh
+
+healthchecks:
+    ping_url: https://hc-ping.com/your-uuid-here   # CHANGE: off-server Healthchecks URL

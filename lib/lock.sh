@@ -2,8 +2,10 @@
 # ==============================================================================
 # Script Name: lib/lock.sh
 # Description: One lock shared by every job that stops, starts or updates
-#              containers (backup.sh, auto-container-update.sh),
-#              so they run one after another instead of fighting each other.
+#              containers, so they run one after another instead of fighting
+#              each other. auto-container-update.sh takes it with
+#              acquire_lock; the backup takes the same file in its cron line
+#              ("flock -w 14400 /run/lock/homeserver-ops.lock borgmatic ...").
 # ==============================================================================
 
 LOCK_FILE="${LOCK_FILE:-/run/lock/homeserver-ops.lock}"

@@ -3,8 +3,8 @@
 # Script Name: auto-container-update.sh
 # Description: Pulls new images for all running docker compose projects and
 #              recreates only the containers whose image changed, then removes
-#              unused images. Refuses to run unless backup.sh succeeded within
-#              the last MAX_BACKUP_AGE_H hours, so there is always a fresh
+#              unused images. Refuses to run unless a backup succeeded within
+#              the last MAX_BACKUP_AGE_H hours (hooks/backup-ok.sh), so there is always a fresh
 #              backup to roll back to. Should be run from root's crontab after
 #              the backup, e.g.
 #              30 4 * * 1 <scriptdir>/auto-container-update.sh >> <logs_dir>/auto-container-update.log 2>&1
