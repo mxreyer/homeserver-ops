@@ -34,7 +34,7 @@ There are no file system snapshots. Container data is consistent because the con
 - Nextcloud AIO volumes (AIO runs its own borg backup);
 - Immich thumbnails and encoded videos;
 - caches (directories with `CACHEDIR.TAG`) and directories containing a `.nobackup` file;
-- `/var/cache`, `/var/tmp`, the local repository itself, and `EXTRA_EXCLUDES`.
+- `/var/cache`, `/var/tmp`, the local borg repository itself, and `EXTRA_EXCLUDES`.
 
 ## Setup
 
