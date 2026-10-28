@@ -174,11 +174,49 @@ The offsite repository lives on another machine you reach over SSH, e.g. at a fr
    sudo systemctl reload ssh   # on Fedora: sshd
    ```
    The file name starts with `01-` on purpose: sshd uses the first value it reads, and many systems ship e.g. `50-cloud-init.conf` with `PasswordAuthentication yes`.
-   **Administer the offsite machine from another device** (e.g. your laptop) with a key that never sits on the server, and make sure no other key from the server is in any `authorized_keys` there. Otherwise an attacker on the server could bypass the restriction.
+   **Administer the offsite machine from another device** (e.g. your laptop) with a key that never sits on the server, and make sure no other key from the server is in any `authorized_keys` there. Otherwise an attacker on the server could bypass the restriction. To protect that admin login against malware on the laptop as well, add a one-time code as described in [Admin logins with a one-time code](#admin-logins-with-a-one-time-code).
 7. **Test from the server:**
    - `sudo borgmatic repo-list --repository offsite` lists the archives;
    - `sudo ssh borg-offsite ls /` prints only borg's help text, no files;
    - `sudo borg list ssh://borg-offsite/home/borg/backups/other` fails with "Repository path not allowed".
+
+### Admin logins with a one-time code
+With this, your admin login on the offsite machine needs the SSH key **and** a 6-digit code from an authenticator app on your phone (e.g. 2FAS). Malware on your laptop then cannot log in on its own, even with your key. The borg key keeps working without a code, so the nightly backups are not affected. Replace `admin` with your login name.
+
+Keep one SSH session to the offsite machine open the whole time and test from a second terminal, so a mistake cannot lock you out.
+
+1. **Install the module and create your secret** (as your admin user, not with sudo):
+   ```bash
+   sudo apt install libpam-google-authenticator
+   google-authenticator -t -d -f -r 3 -R 30 -w 3
+   ```
+   Scan the QR code with your authenticator app, or type in the secret key. Save the printed **emergency scratch codes** in your password manager: they are single-use codes for when your phone is not at hand. The flags mean: time-based codes (`-t`), each code usable once (`-d`), at most 3 logins per 30 seconds (`-r 3 -R 30`), tolerate a small clock difference (`-w 3`), and write `~/.google_authenticator` without asking (`-f`).
+2. **Require the code only for the admin user,** in `/etc/ssh/sshd_config.d/02-totp.conf`:
+   ```
+   # Admin logins need the SSH key AND a TOTP code; every other user (e.g. the
+   # restricted borg key) keeps key-only logins, so unattended backups still work.
+   KbdInteractiveAuthentication yes
+   AuthenticationMethods publickey
+   Match User admin
+       AuthenticationMethods publickey,keyboard-interactive
+   ```
+   It has to be a drop-in: the main `sshd_config` sets `KbdInteractiveAuthentication no` further down, and sshd uses the first value it reads.
+3. **Ask for the code instead of the password:** in `/etc/pam.d/sshd`, replace the line `@include common-auth` with:
+   ```
+   #@include common-auth
+   auth required pam_google_authenticator.so
+   ```
+   Otherwise SSH would also ask for the Unix password (password logins are already disabled in step 6).
+4. **Check and apply:**
+   ```bash
+   sudo sshd -t                                                                    # no output: valid
+   sudo sshd -T -C user=admin,host=x,addr=127.0.0.1 | grep authenticationmethods   # publickey,keyboard-interactive
+   sudo sshd -T -C user=borg,host=x,addr=127.0.0.1  | grep authenticationmethods   # publickey
+   sudo systemctl reload ssh   # on Fedora: sshd
+   ```
+5. **Test, with the old session still open:** `ssh admin@<offsite machine>` from your laptop now asks for `Verification code:` after the key. From the server, `sudo borgmatic repo-list --repository offsite` still works without a code.
+
+Codes only work if the offsite machine's clock is right (`timedatectl` shows "System clock synchronized: yes"). A Raspberry Pi has no battery-backed clock: right after a power cut, before it has network, use a scratch code or wait until the time has synced. Enable your authenticator app's backup, so a lost phone does not lock you out.
 
 ## Protect the offsite copy (append-only)
 The server holds the borg passphrase and an SSH key for the offsite machine. An attacker who takes over the server, e.g. ransomware, could use them to delete the offsite archives too. That is why step 5 above makes the server's key append-only: it can only *add* to the repository, and the server cannot lift that restriction.
