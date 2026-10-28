@@ -34,8 +34,7 @@ There are no file system snapshots. Container data is consistent because the con
 - Nextcloud AIO volumes (AIO runs its own borg backup);
 - Immich thumbnails and encoded videos;
 - caches (directories with `CACHEDIR.TAG`) and directories containing a `.nobackup` file;
-- `/var/cache`, `/var/tmp` and `EXTRA_EXCLUDES`;
-- the local backup disk: its whole mount point if the repository is on a separate disk (so old repositories or other files there are not backed up), otherwise just the repository folder. `configure-borgmatic.sh` prints which one it chose.
+- `/var/cache`, `/var/tmp`, the local repository itself, and `EXTRA_EXCLUDES`.
 
 ## Setup
 

@@ -31,9 +31,8 @@ ${EXTRA_BACKUP_DIRS_YAML}
 # /boot/firmware, a disk under /mnt). Exclude any that must not be backed up,
 # such as network mounts, with EXTRA_EXCLUDES in CONFIG.sh.
 exclude_patterns:
-    # The local backup disk (or just the repository, if it shares a disk with
-    # backed-up data), in case it is mounted below a backed-up directory
-    - '${BORG_REPO_EXCLUDE}'
+    # The local repository itself, in case it lies below a backed-up directory
+    - '${BORG_REPO_LOCAL}'
     # Docker's images, containers and caches; only its volumes are backed up
     - /var/lib/docker/overlay2
     - /var/lib/docker/image
