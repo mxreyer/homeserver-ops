@@ -5,8 +5,7 @@
 # General
 DOCKER_BINDS_DIR=""   # root of the containers' bind mounts, e.g. /srv/docker
 TS_DOMAIN=""
-WEB_SERVICES=""       # space-separated; checked by webservice-health-ping.sh,
-                      # and selects which exports/<service>.sh run before a backup
+WEB_SERVICES=""       # space-separated; checked by webservice-health-ping.sh
 CONTAINER_STOP_TIMEOUT="" # optional; seconds containers get to shut down, defaults to 120
 LOGS_DIR=""
 STATE_DIR=""          # optional; defaults to /var/lib/homeserver-ops

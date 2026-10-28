@@ -1,16 +1,20 @@
 #!/bin/bash
 # ==============================================================================
 # Script Name: hooks/exports.sh
-# Description: borgmatic command hook. Runs exports/<service>.sh for every
-#              service listed in WEB_SERVICES that has one. These write
-#              database dumps and app-level exports into the service's data
-#              directory, so they end up in the backup next to the raw data.
+# Description: borgmatic command hook. Runs exports/<project>.sh for every
+#              running compose project that has one. These write database
+#              dumps and app-level exports into the service's data directory,
+#              so they end up in the backup next to the raw data.
 #
 # Notes:
-#   - Each export pings its own healthcheck HCHK_<SERVICE> (upper case, dashes
-#     removed, e.g. HCHK_PAPERLESS) if set in CONFIG.sh.
+#   - An export script is named after its compose project, e.g.
+#     exports/immich.sh for the project "immich".
+#   - Each export pings its own healthcheck HCHK_<PROJECT> (upper case, dashes
+#     removed, e.g. HCHK_PAPERLESS) if set in CONFIG.sh. An export whose
+#     project is not running is skipped without a ping, so that healthcheck
+#     reports it as missing.
 #   - A failed export is reported there but does not fail the backup: the raw
-#     data of that service is still backed up from the snapshot.
+#     data of that service is still backed up.
 # ==============================================================================
 
 set -uo pipefail
@@ -18,10 +22,17 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${SCRIPT_DIR}/CONFIG.sh"
 source "${SCRIPT_DIR}/lib/ping.sh"
+source "${SCRIPT_DIR}/lib/docker.sh"
 
-for service in ${WEB_SERVICES:-}; do
-  script="${SCRIPT_DIR}/exports/${service}.sh"
+running="$(running_projects | cut -f1)"
+
+for script in "${SCRIPT_DIR}"/exports/*.sh; do
   [[ -x "$script" ]] || continue
+  service="$(basename "$script" .sh)"
+  if ! grep -qxF "$service" <<< "$running"; then
+    echo "ℹ️  Skipping export of ${service}: compose project not running."
+    continue
+  fi
 
   hchk_var="HCHK_${service^^}"
   hchk_var="${hchk_var//-/}"
