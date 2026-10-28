@@ -67,6 +67,7 @@ It fills `borgmatic/config.template.yaml` with your `CONFIG.sh` values, validate
 ```bash
 sudo borgmatic repo-create --encryption repokey
 ```
+Then restrict the server's access to the offsite repository to append-only, as described under [Protect the offsite copy](#protect-the-offsite-copy-append-only). Do this after `repo-create`, which needs normal access.
 
 ### 5. Store the keys off the server (do not skip this)
 The repokey lives inside each repository, and the passphrase lives only on this server. If the server dies, you need **both** to read the offsite copy. Store the passphrase and the key export in a password manager or on paper:
@@ -130,6 +131,24 @@ The old per-service repositories (`<backup disk>/<service>/borg`) are untouched 
 sudo BORG_PASSCOMMAND="head -n 1 .borg-pass-<service>" borg list "<backup disk>/<service>/borg"
 ```
 
+## Protect the offsite copy (append-only)
+The server holds the borg passphrase and an SSH key for the offsite machine. An attacker who takes over the server, e.g. ransomware, could use them to delete the offsite archives too. To prevent that, the offsite machine lets the server's key only *add* to the repository.
+
+**Setup, on the offsite machine:** in `~/.ssh/authorized_keys` of the user that owns the repository, prefix the server's key (root's, since borgmatic runs as root) with a forced command:
+```
+command="borg serve --append-only --restrict-to-repository /path/to/backups/homeserver",restrict ssh-ed25519 AAAA… root@homeserver
+```
+The key can then only run borg in append-only mode on that one repository, and the server cannot lift this restriction. Test it once from the server: `sudo borgmatic repo-list --repository offsite` should still work.
+
+**What changes:** the nightly backup and the checks work as before. But for the offsite repository:
+- `prune` and any `delete` only *hide* archives. They disappear from listings, but their data stays in the repository and can be restored by rolling back. borg records every change with a timestamp in the repository's `transactions` file.
+- `compact` frees nothing, so the offsite repository keeps growing until you compact it yourself (below). Plan its disk space accordingly.
+
+**Compacting, every few months, on the offsite machine:**
+1. On the server, check the offsite archive list looks as expected: `sudo borgmatic repo-list --repository offsite` should show the recent daily, weekly and monthly archives.
+2. If archives are missing that the retention rules (7 daily, 4 weekly, 12 monthly) would have kept, **don't compact**: someone may have deleted them. Roll the repository back instead, following "Append-only mode" in borg's [usage notes](https://borgbackup.readthedocs.io/en/stable/usage/notes.html).
+3. Otherwise, as the repository owner on the offsite machine (not through the restricted key): `borg compact /path/to/backups/homeserver`. This makes the pruned deletions final and frees their space. It needs no passphrase.
+
 ## Files
 
 | File | Purpose |
@@ -145,5 +164,6 @@ sudo BORG_PASSCOMMAND="head -n 1 .borg-pass-<service>" borg list "<backup disk>/
 
 ## Notes
 - **Pin major versions** in your compose files (e.g. `postgres:16`). `auto-container-update.sh` then applies only minor updates, and you do major upgrades by hand after reading the release notes.
+- **The offsite repository only grows** while it is append-only. Compact it every few months as described in [Protect the offsite copy](#protect-the-offsite-copy-append-only).
 - **Use a Healthchecks instance that does not run on this server** for the `HCHK_*` URLs, e.g. hc-ping.com. A self-hosted one goes down with the server it is supposed to watch.
 - To add an export for a new service, add an executable `exports/<project>.sh` named after its compose project, and optionally set `HCHK_<PROJECT>`. It runs automatically whenever that project is running.
