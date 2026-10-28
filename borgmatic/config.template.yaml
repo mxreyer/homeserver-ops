@@ -74,13 +74,19 @@ keep_daily: 7
 keep_weekly: 4
 keep_monthly: 12
 
+# Checks sized for repositories of several TB. The full data verification
+# (reading and decrypting everything) is not part of the nightly run: it runs
+# twice a year for the local repository only, from its own cron line (README).
 checks:
+    # Verifies the checksum of every stored block (on the remote machine for
+    # the offsite repository, without downloading anything). Capped at 3 hours
+    # per run; the next run continues where it stopped.
     - name: repository
-      frequency: 2 weeks
+      frequency: 1 week
+      max_duration: 10800
+    # Reads only metadata: every archive is readable and complete
     - name: archives
       frequency: 1 month
-    - name: data
-      frequency: 3 months
 
 # The hooks live in the homeserver-ops checkout
 commands:

@@ -11,12 +11,7 @@ Cron runs `flock … borgmatic` daily as root. `flock` takes the lock shared wit
 1. **Exports.** For each running compose project that has an `exports/<project>.sh`, the export runs while the service is up. It writes database dumps and app-level exports (paperless exporter, mealie and beszel API backups) into the service's data directory. Each export pings its own `HCHK_<PROJECT>`; an export whose project isn't running is skipped without a ping, so its healthcheck flags it. A failed export is reported there but does not stop the backup.
 2. **Stop.** All running containers are stopped (`hooks/containers.sh stop`), compose projects and plain `docker run` containers alike. Nextcloud AIO is left alone, since it backs itself up. Each container gets `CONTAINER_STOP_TIMEOUT` seconds (default 120) to shut down cleanly. If anything fails to stop, the run aborts before archiving.
 3. **Archive.** borg writes the archive, and the containers are started again.
-4. **Housekeeping.** borgmatic prunes (7 daily, 4 weekly, 12 monthly), compacts and, when due, checks the repository:
-   - repository: every 2 weeks;
-   - archives: monthly;
-   - full data verification: every 3 months.
-
-   Containers are already back up during this step. Steps 2–4 repeat for the offsite repository.
+4. **Housekeeping.** borgmatic prunes (7 daily, 4 weekly, 12 monthly), compacts and, when due, runs the repository checks described under [Repository checks](#repository-checks). Containers are already back up during this step. Steps 2–4 repeat for the offsite repository.
 5. **Success marker.** After a fully successful run, `hooks/backup-ok.sh` touches `$STATE_DIR/last-backup-ok`, which `auto-container-update.sh` requires.
 6. **Monitoring.** borgmatic pings `HCHK_SERVER_BACKUP` on start, success and failure, with the log attached.
 
@@ -39,8 +34,15 @@ There are no file system snapshots. Container data is consistent because the con
 ## Setup
 
 ### 1. Dependencies
-- **borg ≥ 1.4.** Recent Fedora releases and Debian 13–based systems (including Raspberry Pi OS based on Debian 13) ship it. On older releases, such as Ubuntu 24.04 or Raspberry Pi OS based on Debian 12, use the [standalone binary](https://github.com/borgbackup/borg/releases) or `pipx install borgbackup` (needs the build dependencies listed in borg's install docs).
-- **borgmatic ≥ 2.0.** Use the distro package if it is recent enough; otherwise `sudo pipx install --global borgmatic` (see the [borgmatic install docs](https://torsion.org/borgmatic/docs/how-to/set-up-backups/)).
+- **borg 1.4** (≥ 1.4, < 2). Recent Fedora releases and Debian 13–based systems (including Raspberry Pi OS based on Debian 13) ship it. Elsewhere, such as Ubuntu 24.04 or Raspberry Pi OS based on Debian 12, install it with [uv](https://docs.astral.sh/uv/) as below, or use the [standalone binary](https://github.com/borgbackup/borg/releases).
+- **borgmatic ≥ 2.0.** Use the distro package if it is recent enough; otherwise install it with uv as below (see also the [borgmatic install docs](https://torsion.org/borgmatic/docs/how-to/set-up-backups/)).
+
+To install both system-wide with uv, so that root and cron find them in `/usr/local/bin`:
+```bash
+sudo env UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'borgbackup>=1.4,<2'
+sudo env UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install borgmatic
+```
+uv builds borg from source, which needs a C compiler and the development headers listed in borg's install docs (on Debian/Ubuntu: `build-essential pkg-config python3-dev libacl1-dev libssl-dev liblz4-dev libzstd-dev libxxhash-dev`). borg is pinned below 2, because borg 2 uses a new, incompatible repository format. Update later with the same `env …` prefix and `uv tool upgrade borgbackup borgmatic`.
 - **Docker CE with compose v2.** podman is not supported.
 - `curl`, `jq`, `unzip`, `flock`.
 - `envsubst`, used by `configure-borgmatic.sh`: package `gettext-base` on Debian, Ubuntu and Raspberry Pi OS (usually preinstalled), `gettext-envsubst` or `gettext` on Fedora.
@@ -76,15 +78,28 @@ sudo borgmatic key export --repository offsite
 ```bash
 # Backup - daily at 3 AM; the lock keeps it and the update from overlapping
 0 3 * * * flock -w 14400 /run/lock/homeserver-ops.lock borgmatic --verbosity 1 >> /path/to/logs/backup.log 2>&1
+# Full data verification of the local repository - 1 Jan and 1 Jul at 5 AM, after the backup
+0 5 1 1,7 * flock -w 14400 /run/lock/homeserver-ops.lock borgmatic check --only data --force --repository local --verbosity 1 >> /path/to/logs/backup-verify.log 2>&1
 # Container updates - weekly on Monday at 5 AM; refuses to run without a backup from the last 26h
 0 5 * * 1 /opt/homeserver-ops/auto-container-update.sh >> /path/to/logs/auto-container-update.log 2>&1
 # Health checks
 */30 * * * * /opt/homeserver-ops/server-health-ping.sh >> /path/to/logs/health.log 2>&1
 */30 * * * * /opt/homeserver-ops/webservice-health-ping.sh >> /path/to/logs/webservice-health.log 2>&1
 ```
-Cron's `PATH` may not include `/usr/local/bin`, where `pipx install --global` puts borgmatic. If so, use the full path, e.g. `/usr/local/bin/borgmatic`.
+Cron's `PATH` may not include `/usr/local/bin`, where the uv install above puts borgmatic. If so, use the full path, e.g. `/usr/local/bin/borgmatic`.
 
 Rotate the logs with `logrotate.conf.template` (install instructions inside).
+
+### Repository checks
+borg can check a repository at three levels. The schedule is sized for repositories of several TB, and all results go to `HCHK_SERVER_BACKUP`:
+
+| Check | What it verifies | When |
+| --- | --- | --- |
+| repository | The checksum of every stored block (disk corruption). For the offsite repository, it runs on the remote machine without downloading anything. | Weekly, both repositories, at most 3 hours per run; the next run continues where it stopped, so a few TB are covered every few weeks. |
+| archives | Every archive's metadata: readable and complete, no missing blocks. | Monthly, both repositories. |
+| data | Downloads, decrypts and cryptographically verifies every block. Also detects tampering, or corruption that happens to leave the checksum intact. | Twice a year, **local repository only**, from its own cron line (it reads the whole repository). The offsite repository is not data-checked: that would download several TB, and its weekly repository check already covers disk corruption there. |
+
+None of these replaces a restore drill (below).
 
 ### 7. First run
 ```bash
