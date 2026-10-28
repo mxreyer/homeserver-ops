@@ -34,19 +34,18 @@ There are no file system snapshots. Container data is consistent because the con
 ## Setup
 
 ### 1. Dependencies
-- **borg 1.4** (≥ 1.4, < 2). Recent Fedora releases and Debian 13–based systems (including Raspberry Pi OS based on Debian 13) ship it. Elsewhere, such as Ubuntu 24.04 or Raspberry Pi OS based on Debian 12, install it with [uv](https://docs.astral.sh/uv/) as below, or use the [standalone binary](https://github.com/borgbackup/borg/releases).
-- **borgmatic ≥ 2.0.** Use the distro package if it is recent enough; otherwise install it with uv as below (see also the [borgmatic install docs](https://torsion.org/borgmatic/docs/how-to/set-up-backups/)).
-
-To install both system-wide with uv, so that root and cron find them in `/usr/local/bin`:
-```bash
-sudo env UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install 'borgbackup>=1.4,<2'
-sudo env UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install borgmatic
-```
-uv builds borg from source, which needs a C compiler and the development headers listed in borg's install docs (on Debian/Ubuntu: `build-essential pkg-config python3-dev libacl1-dev libssl-dev liblz4-dev libzstd-dev libxxhash-dev`). borg is pinned below 2, because borg 2 uses a new, incompatible repository format. Update later with the same `env …` prefix and `uv tool upgrade borgbackup borgmatic`.
+- **borg 1.4** (≥ 1.4, < 2) from the distribution: `sudo apt install borgbackup` (Fedora: `sudo dnf install borgbackup`). borg 2 uses a new, incompatible repository format.
+- **borgmatic ≥ 2.0**, installed with [uv](https://docs.astral.sh/uv/) as recommended by the [borgmatic install docs](https://torsion.org/borgmatic/docs/how-to/set-up-backups/) (see below).
 - **Docker CE with compose v2.** podman is not supported.
 - `curl`, `jq`, `unzip`, `flock`.
 - `envsubst`, used by `configure-borgmatic.sh`: package `gettext-base` on Debian, Ubuntu and Raspberry Pi OS (usually preinstalled), `gettext-envsubst` or `gettext` on Fedora.
 - **Fedora:** Workstation has no cron daemon by default: `sudo dnf install cronie && sudo systemctl enable --now crond`.
+
+Install borgmatic system-wide with uv, so that root and cron find it in `/usr/local/bin`:
+```bash
+sudo env UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install borgmatic
+```
+Update it later with `sudo env UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool upgrade borgmatic`.
 
 ### 2. Clone and configure the scripts
 ```bash
