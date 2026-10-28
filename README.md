@@ -11,7 +11,7 @@ Cron runs `flock … borgmatic` daily as root. `flock` takes the lock shared wit
 1. **Exports.** For each running compose project that has an `exports/<project>.sh`, the export runs while the service is up. It writes database dumps and app-level exports (paperless exporter, mealie and beszel API backups) into the service's data directory. Each export pings its own `HCHK_<PROJECT>`; an export whose project isn't running is skipped without a ping, so its healthcheck flags it. A failed export is reported there but does not stop the backup.
 2. **Stop.** All running containers are stopped (`hooks/containers.sh stop`), compose projects and plain `docker run` containers alike. Nextcloud AIO is left alone, since it backs itself up. Each container gets `CONTAINER_STOP_TIMEOUT` seconds (default 120) to shut down cleanly. If anything fails to stop, the run aborts before archiving.
 3. **Archive.** borg writes the archive, and the containers are started again.
-4. **Housekeeping.** borgmatic prunes (7 daily, 4 weekly, 12 monthly), compacts and, when due, runs the repository checks described under [Repository checks](#repository-checks). Containers are already back up during this step. Steps 2–4 repeat for the offsite repository.
+4. **Housekeeping.** borgmatic prunes (7 daily, 4 weekly, 12 monthly), compacts and, when due, runs the repository checks described under [Repository checks](#repository-checks). Containers are already back up during this step. Steps 2–4 repeat for the offsite repository. Because the offsite repository is append-only, pruning there only *hides* old archives (their data stays and can be restored by rolling back), and compacting frees nothing until you compact it yourself on the offsite machine (see [Maintenance](#maintenance-every-few-months)).
 5. **Success marker.** After a fully successful run, `hooks/backup-ok.sh` touches `$STATE_DIR/last-backup-ok`, which `auto-container-update.sh` requires.
 6. **Monitoring.** borgmatic pings `HCHK_SERVER_BACKUP` on start, success and failure, with the log attached.
 
@@ -95,7 +95,7 @@ It fills `borgmatic/config.template.yaml` with your `CONFIG.sh` values, validate
 
 ### 5. Create the repositories, then make the offsite one append-only
 1. **Server:** `sudo borgmatic repo-create --encryption repokey`
-2. **Offsite:** add `--append-only` to the forced command in `/home/borg/.ssh/authorized_keys`. From now on the server can only *add* to that repository (see [Protect the offsite copy](#protect-the-offsite-copy-append-only)):
+2. **Offsite:** add `--append-only` to the forced command in `/home/borg/.ssh/authorized_keys`. From now on the server can only *add* to that repository. The server holds the borg passphrase and this SSH key, so an attacker who takes over the server (e.g. ransomware) could otherwise use them to delete the offsite archives too. The restriction lives on the offsite machine, so the server cannot lift it:
    ```
    command="borg serve --append-only --restrict-to-repository /home/borg/backups/homeserver",restrict ssh-ed25519 AAAA… borg@homeserver
    ```
@@ -214,14 +214,9 @@ The old per-service repositories (`<backup disk>/<service>/borg`) are untouched 
 sudo BORG_PASSCOMMAND="head -n 1 .borg-pass-<service>" borg list "<backup disk>/<service>/borg"
 ```
 
-## Protect the offsite copy (append-only)
-The server holds the borg passphrase and an SSH key for the offsite machine. An attacker who takes over the server, e.g. ransomware, could use them to delete the offsite archives too. That is why setup step 5 makes the server's key append-only: it can only *add* to the repository, and the server cannot lift that restriction.
-
-**What changes:** the nightly backup and the checks work as before. But for the offsite repository:
-- `prune` and any `delete` only *hide* archives. They disappear from listings, but their data stays in the repository and can be restored by rolling back. borg records every change with a timestamp in the repository's `transactions` file.
-- `compact` frees nothing, so the offsite repository keeps growing until you compact it yourself, as part of the [Maintenance](#maintenance-every-few-months) routine. Plan its disk space accordingly.
-
 ## Maintenance (every few months)
+The append-only offsite repository keeps growing until you compact it (step 3); plan its disk space accordingly.
+
 1. **Restore drill.** Restore one service from the latest archive onto a scratch machine or into a temporary directory, and start it (see [Restore](#restore)). Check that its files are intact and readable: ransomware would leave encrypted garbage in the newest archives. A backup you have never restored from is only a hope.
    - **Alternate between the repositories** (`--repository local` / `--repository offsite`). The offsite repository gets no full data check, so restoring from it is its real test.
    - **Once a year, use your recovery material instead of the server's files:** `sudo borg list ssh://borg-offsite/home/borg/backups/homeserver` asks for the passphrase; type it from your password manager, not from `.borg-pass`. Also compare `sudo borgmatic key export --repository local` and `--repository offsite` with the key exports stored there. That proves you could recover after losing the server.
@@ -258,6 +253,6 @@ The server holds the borg passphrase and an SSH key for the offsite machine. An 
 
 ## Notes
 - **Pin major versions** in your compose files (e.g. `postgres:16`). `auto-container-update.sh` then applies only minor updates, and you do major upgrades by hand after reading the release notes.
-- **Every few months:** restore drill, offsite archive check, compaction, access audit and updates, see [Maintenance](#maintenance-every-few-months). Until compacted, the append-only offsite repository only grows.
+- **Every few months:** restore drill, offsite archive check, compaction, access audit and updates, see [Maintenance](#maintenance-every-few-months).
 - **Use a Healthchecks instance that does not run on this server** for the `HCHK_*` URLs, e.g. hc-ping.com. A self-hosted one goes down with the server it is supposed to watch.
 - To add an export for a new service, add an executable `exports/<project>.sh` named after its compose project, and optionally set `HCHK_<PROJECT>`. It runs automatically whenever that project is running.
