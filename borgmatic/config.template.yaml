@@ -1,17 +1,18 @@
 # ==============================================================================
-# borgmatic configuration for homeserver-ops: one archive per run of the whole
+# Template for /etc/borgmatic/config.yaml: one archive per run of the whole
 # server, including all docker volumes and bind mounts, written to a local and
-# an offsite repository.
+# an offsite repository. Requires borgmatic >= 2.0 and borg >= 1.4.
 #
-# Install: copy to /etc/borgmatic/config.yaml (borgmatic's default location)
-# and adjust every line marked CHANGE. Requires borgmatic >= 2.0, borg >= 1.4.
-# Check with: sudo borgmatic config validate
+# Do not copy this file by hand: configure-borgmatic.sh fills in the {{...}}
+# placeholders from CONFIG.sh and installs the result. Change general backup
+# behaviour (excludes, retention, checks, hooks) here, and host-specific values
+# in CONFIG.sh, then rerun configure-borgmatic.sh.
 # ==============================================================================
 
 repositories:
-    - path: /mnt/backup/homeserver                     # CHANGE: local repository
+    - path: '{{BORG_REPO_LOCAL}}'
       label: local
-    - path: ssh://user@backup-host/./backups/homeserver  # CHANGE: offsite repository
+    - path: '{{BORG_REPO_OFFSITE}}'
       label: offsite
 
 source_directories:
@@ -24,14 +25,15 @@ source_directories:
     - /var/spool/cron
     - /boot
     - /mnt
-    - /srv/docker         # CHANGE: root of the containers' bind mounts (DOCKER_BINDS_DIR)
-    # Add further directories to back up here.
+    - '{{DOCKER_BINDS_DIR}}'
+    {{EXTRA_BACKUP_DIRS}}
 
 # Borg follows file systems mounted below these directories (e.g. /boot/efi,
 # /boot/firmware, a disk under /mnt). Exclude any that must not be backed up,
-# such as the backup disk itself or network mounts.
+# such as network mounts, with EXTRA_EXCLUDES in CONFIG.sh.
 exclude_patterns:
-    - /mnt/backup         # CHANGE: the local backup disk, if it is mounted below a source
+    # The local repository itself, in case it lies below a backed-up directory
+    - '{{BORG_REPO_LOCAL}}'
     # Docker's images, containers and caches; only its volumes are backed up
     - /var/lib/docker/overlay2
     - /var/lib/docker/image
@@ -56,16 +58,16 @@ exclude_patterns:
     - /var/cache
     - /var/tmp
     # Immich can regenerate these
-    - /srv/docker/immich/library/thumbs          # CHANGE: bind root
-    - /srv/docker/immich/library/encoded-video   # CHANGE: bind root
-    # Add further paths or globs to exclude here.
+    - '{{DOCKER_BINDS_DIR}}/immich/library/thumbs'
+    - '{{DOCKER_BINDS_DIR}}/immich/library/encoded-video'
+    {{EXTRA_EXCLUDES}}
 
 exclude_caches: true
 exclude_if_present:
     - .nobackup
 source_directories_must_exist: true
 
-encryption_passcommand: cat /opt/homeserver-ops/.borg-pass   # CHANGE: passphrase file
+encryption_passcommand: 'cat {{BORG_PASS_FILE}}'
 lock_wait: 600
 statistics: standard
 
@@ -81,34 +83,33 @@ checks:
     - name: data
       frequency: 3 months
 
-# The hooks live in the homeserver-ops checkout. CHANGE /opt/homeserver-ops
-# below if it is cloned elsewhere.
+# The hooks live in the homeserver-ops checkout
 commands:
     # Once per run, while all containers are still up
     - before: configuration
       when: [create]
       run:
-          - /opt/homeserver-ops/hooks/pkglist.sh
-          - /opt/homeserver-ops/hooks/exports.sh
+          - {{REPO_DIR}}/hooks/pkglist.sh
+          - {{REPO_DIR}}/hooks/exports.sh
     # Containers are down only while each repository's archive is written;
     # prune, compact and check run with them up again
     - before: action
       when: [create]
       run:
-          - /opt/homeserver-ops/hooks/containers.sh stop
+          - {{REPO_DIR}}/hooks/containers.sh stop
     - after: action
       when: [create]
       run:
-          - /opt/homeserver-ops/hooks/containers.sh start
+          - {{REPO_DIR}}/hooks/containers.sh start
     - after: error
       run:
-          - /opt/homeserver-ops/hooks/containers.sh start
+          - {{REPO_DIR}}/hooks/containers.sh start
     # Record the successful backup that auto-container-update.sh requires
     - after: configuration
       when: [create]
       states: [finish]
       run:
-          - /opt/homeserver-ops/hooks/backup-ok.sh
+          - {{REPO_DIR}}/hooks/backup-ok.sh
 
 healthchecks:
-    ping_url: https://hc-ping.com/your-uuid-here   # CHANGE: off-server Healthchecks URL
+    ping_url: '{{HCHK_SERVER_BACKUP}}'

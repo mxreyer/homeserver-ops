@@ -2,7 +2,7 @@
 
 Backups, container updates and health monitoring for a docker-based homeserver. Runs on Ubuntu, Fedora and Raspberry Pi OS.
 
-Backups are done by [borgmatic](https://torsion.org/borgmatic/), called directly from cron with its standard config file `/etc/borgmatic/config.yaml`. Each run writes one encrypted, deduplicated archive of the whole server, including every docker volume and bind mount, to a local and an offsite borg repository.
+Backups are done by [borgmatic](https://torsion.org/borgmatic/), called directly from cron with its standard config file `/etc/borgmatic/config.yaml`. That file is generated from `borgmatic/config.template.yaml` and your `CONFIG.sh` by `configure-borgmatic.sh`, so all settings live in `CONFIG.sh`. Each run writes one encrypted, deduplicated archive of the whole server, including every docker volume and bind mount, to a local and an offsite borg repository.
 
 ## How a backup works
 
@@ -18,23 +18,23 @@ Cron runs `flock … borgmatic` daily as root. `flock` takes the lock shared wit
 
    Containers are already back up during this step. Steps 2–4 repeat for the offsite repository.
 5. **Success marker.** After a fully successful run, `hooks/backup-ok.sh` touches `$STATE_DIR/last-backup-ok`, which `auto-container-update.sh` requires.
-6. **Monitoring.** borgmatic pings the Healthchecks URL from its config on start, success and failure, with the log attached.
+6. **Monitoring.** borgmatic pings `HCHK_SERVER_BACKUP` on start, success and failure, with the log attached.
 
 Containers are also started again if any step fails. If borgmatic itself is killed mid-run, the next backup starts them again, or run `sudo /opt/homeserver-ops/hooks/containers.sh start` by hand.
 
-There are no file system snapshots. Container data is consistent because the containers are stopped. The rest is mostly configuration that rarely changes. If borg reports "file changed while we backed it up" for a busy file, such as a log, exclude it.
+There are no file system snapshots. Container data is consistent because the containers are stopped. The rest is mostly configuration that rarely changes. If borg reports "file changed while we backed it up" for a busy file, such as a log, add it to `EXTRA_EXCLUDES`.
 
-**What is backed up** (`source_directories` in the borgmatic config):
-- `/etc /home /root /usr/local /opt /var/lib /var/spool/cron /boot /mnt` and the docker bind root;
+**What is backed up:**
+- `/etc /home /root /usr/local /opt /var/lib /var/spool/cron /boot /mnt`, `DOCKER_BINDS_DIR` and `EXTRA_BACKUP_DIRS`;
 - every file system mounted below those (e.g. `/boot/efi`, `/boot/firmware`, a disk under `/mnt`);
 - all docker named volumes, under `/var/lib/docker/volumes`. **New volumes and services are covered automatically.**
 
-**What is excluded** (`exclude_patterns`):
+**What is excluded:**
 - docker images, containers and build cache;
 - Nextcloud AIO volumes (AIO runs its own borg backup);
 - Immich thumbnails and encoded videos;
 - caches (directories with `CACHEDIR.TAG`) and directories containing a `.nobackup` file;
-- `/var/cache`, `/var/tmp` and the local backup disk.
+- `/var/cache`, `/var/tmp`, the local repository itself, and `EXTRA_EXCLUDES`.
 
 ## Setup
 
@@ -49,18 +49,15 @@ There are no file system snapshots. Container data is consistent because the con
 ```bash
 sudo git clone https://github.com/mxreyer/homeserver-ops.git /opt/homeserver-ops
 cd /opt/homeserver-ops
-sudo cp CONFIG.template.sh CONFIG.sh   # then fill it in
+sudo cp CONFIG.template.sh CONFIG.sh   # then fill it in, including the "Backup" section
 ```
 Put a long random passphrase in `.borg-pass` (first line only) and run `sudo chmod 600 .borg-pass`.
 
-### 3. Configure borgmatic
+### 3. Generate the borgmatic config
 ```bash
-sudo install -d /etc/borgmatic
-sudo cp borgmatic/config.example.yaml /etc/borgmatic/config.yaml
-sudo nano /etc/borgmatic/config.yaml   # adjust every line marked CHANGE
-sudo borgmatic config validate
+sudo ./configure-borgmatic.sh
 ```
-The `CHANGE` lines are the two repositories, the docker bind root, the local backup disk, the passphrase file, the path of this checkout (if not `/opt/homeserver-ops`) and the Healthchecks URL. Add your own directories to back up or exclude in the same file.
+It fills `borgmatic/config.template.yaml` with your `CONFIG.sh` values, validates the result and installs it as `/etc/borgmatic/config.yaml`. If that file already exists, it shows the changes first. **Rerun it whenever you change `CONFIG.sh` or pull updates of this repository.** Don't edit `/etc/borgmatic/config.yaml` by hand: the next run would overwrite it.
 
 ### 4. Create the repositories
 ```bash
@@ -120,15 +117,16 @@ sudo BORG_PASSCOMMAND="head -n 1 .borg-pass-<service>" borg list "<backup disk>/
 
 | File | Purpose |
 | --- | --- |
-| `borgmatic/config.example.yaml` | Template for `/etc/borgmatic/config.yaml`: repositories, what to back up, retention, checks, hooks, Healthchecks |
+| `configure-borgmatic.sh` | Generates and installs `/etc/borgmatic/config.yaml` from the template and `CONFIG.sh` |
+| `borgmatic/config.template.yaml` | Template for the borgmatic config: what to back up, excludes, retention, checks, hooks |
 | `hooks/` | Commands borgmatic runs: package list, exports, container stop/start, success marker |
 | `exports/<service>.sh` | Database dumps and app exports, one per service |
 | `auto-container-update.sh` | `pull` + `up -d` for each running compose project, then `docker image prune` |
 | `server-health-ping.sh`, `webservice-health-ping.sh` | Healthchecks pings for the server and the web services |
 | `lib/docker.sh`, `lib/lock.sh`, `lib/ping.sh` | Shared functions |
-| `CONFIG.template.sh` | Template for `CONFIG.sh`, the settings of the scripts (not of the backup itself) |
+| `CONFIG.template.sh` | Template for `CONFIG.sh`, all settings of this server |
 
 ## Notes
 - **Pin major versions** in your compose files (e.g. `postgres:16`). `auto-container-update.sh` then applies only minor updates, and you do major upgrades by hand after reading the release notes.
-- **Use a Healthchecks instance that does not run on this server** for the `HCHK_*` URLs and the borgmatic `ping_url`, e.g. hc-ping.com. A self-hosted one goes down with the server it is supposed to watch.
+- **Use a Healthchecks instance that does not run on this server** for the `HCHK_*` URLs, e.g. hc-ping.com. A self-hosted one goes down with the server it is supposed to watch.
 - To add an export for a new service, add `exports/<service>.sh` (executable), list the service in `WEB_SERVICES` and optionally set `HCHK_<SERVICE>`.
