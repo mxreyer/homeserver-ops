@@ -41,6 +41,8 @@ There are no file system snapshots. Container data is consistent because the con
 - `envsubst`, used by `configure-borgmatic.sh`: package `gettext-base` on Debian, Ubuntu and Raspberry Pi OS (usually preinstalled), `gettext-envsubst` or `gettext` on Fedora.
 - **Fedora:** Workstation has no cron daemon by default: `sudo dnf install cronie && sudo systemctl enable --now crond`.
 
+uv itself is not in apt on Ubuntu 24.04 (check `apt-cache policy uv` on other releases). Install it with Astral's installer into `/usr/local/bin`: `curl -LsSf https://astral.sh/uv/install.sh | sudo env UV_INSTALL_DIR=/usr/local/bin sh`. On Fedora: `sudo dnf install uv`.
+
 Install borgmatic system-wide with uv, so that root and cron find it in `/usr/local/bin`:
 ```bash
 sudo env UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool install borgmatic
