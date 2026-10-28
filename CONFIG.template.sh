@@ -4,7 +4,6 @@
 
 # General
 DOCKER_BINDS_DIR=""   # root of the containers' bind mounts, e.g. /srv/docker
-DOCKER_COMPOSE_DIR="" # holds one <service>/compose.yaml per service
 TS_DOMAIN=""
 WEB_SERVICES=""       # space-separated; checked by webservice-health-ping.sh,
                       # and selects which exports/<service>.sh run before a backup

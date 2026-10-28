@@ -17,10 +17,7 @@
 
 set -euo pipefail # exit on error, undef vars, or failed pipeline
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../CONFIG.sh"
-
 echo "💾 Requesting paperless export..."
-docker compose -f "${DOCKER_COMPOSE_DIR}/paperless/compose.yaml" exec -T webserver \
+docker exec paperless-webserver-1 \
   document_exporter --delete --no-archive --no-thumbnail --no-progress-bar ../export
 echo "✅ Export created successfully."
