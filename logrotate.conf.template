@@ -1,5 +1,5 @@
 # Rotate the cron job logs. Install with (replace the path with your LOGS_DIR):
-#   sed 's|@LOGS_DIR@|/path/to/logs|' logrotate.conf.template | sudo tee /etc/logrotate.d/homeserver-borgmatic
+#   sed 's|@LOGS_DIR@|/path/to/logs|' logrotate.conf.template | sudo tee /etc/logrotate.d/homeserver-ops
 @LOGS_DIR@/*.log {
     weekly
     rotate 8

@@ -29,7 +29,7 @@ source "${SCRIPT_DIR}/lib/lock.sh"
 source "${SCRIPT_DIR}/lib/ping.sh"
 HEALTHCHECK_URL="${HCHK_SERVER_BACKUP:-}"
 
-STATE_DIR="${STATE_DIR:-/var/lib/homeserver-borgmatic}"
+STATE_DIR="${STATE_DIR:-/var/lib/homeserver-ops}"
 PATTERNS_FILE="${STATE_DIR}/patterns"
 BORGMATIC_CONFIG="${STATE_DIR}/borgmatic.yaml" # generated; includes borgmatic/config.yaml
 LAST_SUCCESS_FILE="${STATE_DIR}/last-backup-ok"

@@ -7,7 +7,7 @@ WEB_SERVICES=""       # space-separated; checked by webservice-health-ping.sh,
                       # and selects which exports/<service>.sh run before a backup
 CONTAINER_STOP_TIMEOUT="" # optional; seconds containers get to shut down, defaults to 120
 LOGS_DIR=""
-STATE_DIR=""          # optional; defaults to /var/lib/homeserver-borgmatic
+STATE_DIR=""          # optional; defaults to /var/lib/homeserver-ops
 
 # Backup (backup.sh / borgmatic)
 BACKUP_LOC=""         # local repo parent dir, e.g. /mnt/backup

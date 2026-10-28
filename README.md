@@ -1,4 +1,4 @@
-# Homeserver Borgmatic
+# Homeserver Ops
 
 Backups, container updates and health monitoring for a docker-based homeserver. Runs on Ubuntu, Fedora and Raspberry Pi OS.
 
