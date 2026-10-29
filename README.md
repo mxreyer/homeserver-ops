@@ -14,6 +14,7 @@ Cron runs `flock … borgmatic` daily as root. `flock` takes the lock shared wit
 4. **Housekeeping.** borgmatic prunes (7 daily, 4 weekly, 12 monthly), compacts and, when due, runs the repository checks described under [Repository checks](#repository-checks). Containers are already back up during this step. Steps 2–4 repeat for the offsite repository. Because the offsite repository is append-only, pruning there only *hides* old archives (their data stays and can be restored by rolling back), and compacting frees nothing until you compact it yourself on the offsite machine (see [Maintenance](#maintenance-every-few-months)).
 5. **Success marker.** After a fully successful run, `hooks/backup-ok.sh` touches `$STATE_DIR/last-backup-ok`, which `auto-container-update.sh` requires.
 6. **Monitoring.** borgmatic pings `HCHK_SERVER_BACKUP` on start, success and failure, with the log attached.
+7. **Time Machine (optional).** If `TIMEMACHINE_DIRS` is set, borgmatic then runs a second config, `/etc/borgmatic.d/timemachine.yaml`: it stops Samba (`TIMEMACHINE_SERVICE`, default `smbd`), writes one `timemachine-<date>` archive of all those folders to the **offsite repository only**, starts Samba again (also on errors), prunes those archives by the same rules, and pings `HCHK_TIMEMACHINE_BACKUP`. The Macs' own Time Machine backups are the local copy, so the main archive excludes these folders.
 
 Containers are also started again if any step fails. If borgmatic itself is killed mid-run, the next backup starts them again, or run `sudo /opt/homeserver-ops/hooks/containers.sh start` by hand.
 
@@ -56,6 +57,7 @@ sudo git clone https://github.com/mxreyer/homeserver-ops.git /opt/homeserver-ops
 cd /opt/homeserver-ops
 sudo cp CONFIG.template.sh CONFIG.sh   # then fill it in, including the "Backup" section
 ```
+To back up Time Machine sparse bundles offsite, also set `TIMEMACHINE_DIRS` (space-separated folders), `HCHK_TIMEMACHINE_BACKUP` and, on Fedora, `TIMEMACHINE_SERVICE="smb"`. Their first upload sends the whole bundles to the offsite machine, which can take days over the internet, with Samba stopped meanwhile. Seed it while the offsite machine is still on your home network, or start it at a convenient time with `sudo borgmatic --config /etc/borgmatic.d/timemachine.yaml create --verbosity 1`.
 Put a long random passphrase in `.borg-pass` (first line only) and run `sudo chmod 600 .borg-pass`.
 
 ### 3. Prepare the offsite machine
@@ -91,7 +93,7 @@ Put a long random passphrase in `.borg-pass` (first line only) and run `sudo chm
 ```bash
 sudo ./configure-borgmatic.sh
 ```
-It fills `borgmatic/config.template.yaml` with your `CONFIG.sh` values, validates the result and installs it as `/etc/borgmatic/config.yaml`. If that file already exists, it shows the changes first. **Rerun it whenever you change `CONFIG.sh` or pull updates of this repository.** Don't edit `/etc/borgmatic/config.yaml` by hand: the next run would overwrite it.
+It fills `borgmatic/config.template.yaml` with your `CONFIG.sh` values, validates the result and installs it as `/etc/borgmatic/config.yaml` (with `TIMEMACHINE_DIRS` set, also `/etc/borgmatic.d/timemachine.yaml`). If that file already exists, it shows the changes first. **Rerun it whenever you change `CONFIG.sh` or pull updates of this repository.** Don't edit `/etc/borgmatic/config.yaml` by hand: the next run would overwrite it.
 
 ### 5. Create the repositories, then make the offsite one append-only
 1. **Server:** `sudo borgmatic repo-create --encryption repokey`
@@ -204,6 +206,14 @@ sudo borgmatic extract --repository local --archive latest \
 ```
 Stop the service before extracting its data, then start it again.
 
+With Time Machine backups configured, the offsite repository holds archives of both configs. For `extract` and `mount` from offsite, name the config, or borgmatic acts on the latest archive of each:
+```bash
+sudo borgmatic --config /etc/borgmatic/config.yaml extract --repository offsite --archive latest --path srv/docker/paperless --destination /
+# One Mac's sparse bundle (stop Samba first: sudo systemctl stop smbd)
+sudo borgmatic --config /etc/borgmatic.d/timemachine.yaml extract --repository offsite --archive latest \
+     --path srv/timemachine/macbook.sparsebundle --destination /
+```
+
 For the database dumps and app exports, follow the restore notes in the header of each `exports/<service>.sh`.
 
 Practise this regularly: the restore drill is part of the [Maintenance](#maintenance-every-few-months) routine.
@@ -214,7 +224,7 @@ The append-only offsite repository keeps growing until you compact it (step 3); 
 1. **Restore drill.** Restore one service from the latest archive onto a scratch machine or into a temporary directory, and start it (see [Restore](#restore)). Check that its files are intact and readable: ransomware would leave encrypted garbage in the newest archives. A backup you have never restored from is only a hope.
    - **Alternate between the repositories** (`--repository local` / `--repository offsite`). The offsite repository gets no full data check, so restoring from it is its real test.
    - **Once a year, use your recovery material instead of the server's files:** `sudo borg list ssh://borg-offsite/home/borg/backups/homeserver` asks for the passphrase; type it from your password manager, not from `.borg-pass`. Also compare `sudo borgmatic key export --repository local` and `--repository offsite` with the key exports stored there. That proves you could recover after losing the server.
-2. **Check the offsite archive list.** On the server: `sudo borgmatic repo-list --repository offsite` should show the recent daily, weekly and monthly archives (retention: 7 daily, 4 weekly, 12 monthly). If archives are missing that the retention rules would have kept, **stop here and don't compact**: someone may have deleted them. Roll the repository back instead, following "Append-only mode" in borg's [usage notes](https://borgbackup.readthedocs.io/en/stable/usage/notes.html).
+2. **Check the offsite archive list.** On the server: `sudo borgmatic repo-list --repository offsite` should show the recent daily, weekly and monthly archives (retention: 7 daily, 4 weekly, 12 monthly), of the server and, if configured, of Time Machine (`timemachine-…`). If archives are missing that the retention rules would have kept, **stop here and don't compact**: someone may have deleted them. Roll the repository back instead, following "Append-only mode" in borg's [usage notes](https://borgbackup.readthedocs.io/en/stable/usage/notes.html).
 3. **Compact the offsite repository.** Only if steps 1 and 2 look fine, from your admin login on the offsite machine (not through the server's restricted key):
    ```bash
    sudo -u borg borg compact /home/borg/backups/homeserver
@@ -236,8 +246,9 @@ The append-only offsite repository keeps growing until you compact it (step 3); 
 
 | File | Purpose |
 | --- | --- |
-| `configure-borgmatic.sh` | Generates and installs `/etc/borgmatic/config.yaml` from the template and `CONFIG.sh` |
+| `configure-borgmatic.sh` | Generates and installs `/etc/borgmatic/config.yaml` (and, with `TIMEMACHINE_DIRS`, `/etc/borgmatic.d/timemachine.yaml`) from the templates and `CONFIG.sh` |
 | `borgmatic/config.template.yaml` | Template for the borgmatic config: what to back up, excludes, retention, checks, hooks |
+| `borgmatic/timemachine.template.yaml` | Template for the optional Time Machine config: sparse bundles to the offsite repository only |
 | `hooks/` | Commands borgmatic runs: package list, exports, container stop/start, success marker |
 | `exports/<service>.sh` | Database dumps and app exports, one per service |
 | `auto-container-update.sh` | `pull` + `up -d` for each running compose project, then `docker image prune` |

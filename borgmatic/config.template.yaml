@@ -60,6 +60,9 @@ exclude_patterns:
     - '${DOCKER_BINDS_DIR}/immich/library/thumbs'
     - '${DOCKER_BINDS_DIR}/immich/library/encoded-video'
 ${EXTRA_EXCLUDES_YAML}
+    # Time Machine sparse bundles go to the offsite repository only, from
+    # /etc/borgmatic.d/timemachine.yaml
+${TIMEMACHINE_DIRS_YAML}
 
 exclude_caches: true
 exclude_if_present:
