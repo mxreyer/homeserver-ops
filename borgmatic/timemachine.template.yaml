@@ -8,9 +8,12 @@
 # /etc/borgmatic/config.yaml in the same run. Edit those, not the generated file.
 # ==============================================================================
 
+# Same repository as the main config's "offsite", under its own label, so
+# "--repository offsite" means the server's archives and "--repository
+# offsite-tmchn" the Time Machine archives
 repositories:
     - path: '${BORG_REPO_OFFSITE}'
-      label: offsite
+      label: offsite-tmchn
 
 source_directories:
 ${TIMEMACHINE_DIRS_YAML}
