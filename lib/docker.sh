@@ -8,7 +8,10 @@
 #     hand: compose projects through their labels, plus containers started
 #     outside compose (e.g. plain "docker run").
 #   - Nextcloud AIO containers are left alone: AIO runs its own backup (its
-#     volumes are excluded from ours) and updates itself.
+#     volumes are excluded from ours) and updates itself. Its mastercontainer
+#     creates them with only the label com.docker.compose.project=nextcloud-aio
+#     and no compose file, so "docker compose -p nextcloud-aio" cannot operate
+#     them; running_projects skips such projects.
 #   - stop_containers records what it stopped in a state file, and
 #     start_containers starts exactly those again. A second stop merges into
 #     the file, so it never forgets what the first one stopped.
@@ -16,11 +19,13 @@
 
 STOP_TIMEOUT="${CONTAINER_STOP_TIMEOUT:-120}" # seconds to shut down before docker kills
 
-# Print "project<TAB>working_dir" for every running compose project
+# Print "project<TAB>working_dir" for every running compose project. Projects
+# without a working directory were not started by docker compose (e.g. the
+# containers Nextcloud AIO creates) and are skipped.
 running_projects() {
   docker ps \
     --format '{{.Label "com.docker.compose.project"}}	{{.Label "com.docker.compose.project.working_dir"}}' \
-    | awk -F'\t' 'NF && $1 != ""' | sort -u
+    | awk -F'\t' '$1 != "" && $2 != ""' | sort -u
 }
 
 # Print the names of running containers that are not part of a compose
