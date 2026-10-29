@@ -6,8 +6,9 @@
 #              it as /etc/borgmatic/config.yaml (shows the changes first).
 #              If TIMEMACHINE_DIRS is set, it also installs
 #              /etc/borgmatic.d/timemachine.yaml from
-#              borgmatic/timemachine.template.yaml (offsite backup of the Time
-#              Machine sparse bundles); otherwise it removes that file.
+#              borgmatic/timemachine.template.yaml (backup of the Time Machine
+#              sparse bundles to their own offsite repository); otherwise it
+#              removes that file.
 #
 # Usage: sudo ./configure-borgmatic.sh
 #        Run it once during setup, and again after changing CONFIG.sh or
@@ -40,7 +41,9 @@ done
 [[ -s "$BORG_PASS_FILE" ]] || die "Missing or empty passphrase file: ${BORG_PASS_FILE}"
 read -ra timemachine_dirs <<< "${TIMEMACHINE_DIRS:-}"
 if (( ${#timemachine_dirs[@]} > 0 )); then
-  [[ -n "${HCHK_TIMEMACHINE_BACKUP:-}" ]] || die "HCHK_TIMEMACHINE_BACKUP is not set in CONFIG.sh (needed for TIMEMACHINE_DIRS)."
+  for var in BORG_REPO_OFFSITE_TMCHN HCHK_TIMEMACHINE_BACKUP; do
+    [[ -n "${!var:-}" ]] || die "${var} is not set in CONFIG.sh (needed for TIMEMACHINE_DIRS)."
+  done
   for dir in "${timemachine_dirs[@]}"; do
     [[ -d "$dir" ]] || die "TIMEMACHINE_DIRS: folder does not exist: ${dir}"
   done
@@ -48,7 +51,7 @@ fi
 # Values are inserted into single-quoted YAML strings and borgmatic commands
 for var in BORG_REPO_LOCAL BORG_REPO_OFFSITE HCHK_SERVER_BACKUP DOCKER_BINDS_DIR \
            BORG_PASS_FILE REPO_DIR EXTRA_BACKUP_DIRS EXTRA_EXCLUDES \
-           TIMEMACHINE_DIRS TIMEMACHINE_SERVICE HCHK_TIMEMACHINE_BACKUP; do
+           TIMEMACHINE_DIRS TIMEMACHINE_SERVICE HCHK_TIMEMACHINE_BACKUP BORG_REPO_OFFSITE_TMCHN; do
   [[ "${!var:-}" != *[\'$'\n']* ]] || die "${var} must not contain quotes or line breaks."
 done
 for var in BORG_PASS_FILE REPO_DIR TIMEMACHINE_SERVICE; do
@@ -66,9 +69,10 @@ EXTRA_BACKUP_DIRS_YAML="$(yaml_list "${EXTRA_BACKUP_DIRS:-}")"
 EXTRA_EXCLUDES_YAML="$(yaml_list "${EXTRA_EXCLUDES:-}")"
 TIMEMACHINE_DIRS_YAML="$(yaml_list "${TIMEMACHINE_DIRS:-}")"
 HCHK_TIMEMACHINE_BACKUP="${HCHK_TIMEMACHINE_BACKUP:-}"
+BORG_REPO_OFFSITE_TMCHN="${BORG_REPO_OFFSITE_TMCHN:-}"
 export BORG_REPO_LOCAL BORG_REPO_OFFSITE HCHK_SERVER_BACKUP DOCKER_BINDS_DIR \
        BORG_PASS_FILE REPO_DIR EXTRA_BACKUP_DIRS_YAML EXTRA_EXCLUDES_YAML \
-       TIMEMACHINE_DIRS_YAML TIMEMACHINE_SERVICE HCHK_TIMEMACHINE_BACKUP
+       TIMEMACHINE_DIRS_YAML TIMEMACHINE_SERVICE HCHK_TIMEMACHINE_BACKUP BORG_REPO_OFFSITE_TMCHN
 
 generated="$(mktemp)"
 trap 'rm -f "$generated"' EXIT
@@ -81,7 +85,8 @@ install_config() {
   # shellcheck disable=SC2016 # the variable names are meant literally here
   envsubst '${BORG_REPO_LOCAL} ${BORG_REPO_OFFSITE} ${HCHK_SERVER_BACKUP} ${DOCKER_BINDS_DIR}
             ${BORG_PASS_FILE} ${REPO_DIR} ${EXTRA_BACKUP_DIRS_YAML} ${EXTRA_EXCLUDES_YAML}
-            ${TIMEMACHINE_DIRS_YAML} ${TIMEMACHINE_SERVICE} ${HCHK_TIMEMACHINE_BACKUP}' \
+            ${TIMEMACHINE_DIRS_YAML} ${TIMEMACHINE_SERVICE} ${HCHK_TIMEMACHINE_BACKUP}
+            ${BORG_REPO_OFFSITE_TMCHN}' \
     < "$template" > "$generated"
   leftover="$(grep -oE '\$\{[A-Za-z_]+\}' "$generated" | head -n 1 || true)"
   [[ -z "$leftover" ]] || die "Unknown placeholder ${leftover} in ${template}."
