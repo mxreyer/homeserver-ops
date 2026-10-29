@@ -208,12 +208,6 @@ For the database dumps and app exports, follow the restore notes in the header o
 
 Practise this regularly: the restore drill is part of the [Maintenance](#maintenance-every-few-months) routine.
 
-### Archives from before the borgmatic migration
-The old per-service repositories (`<backup disk>/<service>/borg`) are untouched and can still be read with plain borg. Delete them once the new repositories have enough history:
-```bash
-sudo BORG_PASSCOMMAND="head -n 1 .borg-pass-<service>" borg list "<backup disk>/<service>/borg"
-```
-
 ## Maintenance (every few months)
 The append-only offsite repository keeps growing until you compact it (step 3); plan its disk space accordingly.
 
