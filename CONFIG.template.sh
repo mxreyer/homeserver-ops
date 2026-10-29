@@ -7,6 +7,8 @@ DOCKER_BINDS_DIR=""   # root of the containers' bind mounts, e.g. /srv/docker
 TS_DOMAIN=""
 WEB_SERVICES=""       # space-separated; checked by webservice-health-ping.sh
 CONTAINER_STOP_TIMEOUT="" # optional; seconds containers get to shut down, defaults to 120
+SKIP_PROJECTS=""      # optional; space-separated compose projects that the backup never stops
+                      # and auto-container-update.sh never updates, e.g. nc-aio (Nextcloud AIO)
 LOGS_DIR=""
 STATE_DIR=""          # optional; defaults to /var/lib/homeserver-ops
 

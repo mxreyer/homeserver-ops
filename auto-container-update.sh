@@ -14,7 +14,9 @@
 # Notes:
 #   - Pin major versions in your compose files (e.g. postgres:16), so this
 #     only applies minor updates; do major upgrades by hand.
-#   - Nextcloud AIO updates itself through its mastercontainer.
+#   - Nextcloud AIO updates itself through its mastercontainer; put the compose
+#     project that runs the mastercontainer in SKIP_PROJECTS (CONFIG.sh), and
+#     this script leaves it alone, like every project listed there.
 # ==============================================================================
 
 set -euo pipefail

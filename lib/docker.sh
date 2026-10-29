@@ -12,6 +12,8 @@
 #     creates them with only the label com.docker.compose.project=nextcloud-aio
 #     and no compose file, so "docker compose -p nextcloud-aio" cannot operate
 #     them; running_projects skips such projects.
+#   - Compose projects listed in SKIP_PROJECTS (CONFIG.sh) are left alone
+#     too: never stopped, started, updated or exported.
 #   - stop_containers records what it stopped in a state file, and
 #     start_containers starts exactly those again. A second stop merges into
 #     the file, so it never forgets what the first one stopped.
@@ -21,11 +23,13 @@ STOP_TIMEOUT="${CONTAINER_STOP_TIMEOUT:-120}" # seconds to shut down before dock
 
 # Print "project<TAB>working_dir" for every running compose project. Projects
 # without a working directory were not started by docker compose (e.g. the
-# containers Nextcloud AIO creates) and are skipped.
+# containers Nextcloud AIO creates) and are skipped, as are SKIP_PROJECTS.
 running_projects() {
   docker ps \
     --format '{{.Label "com.docker.compose.project"}}	{{.Label "com.docker.compose.project.working_dir"}}' \
-    | awk -F'\t' '$1 != "" && $2 != ""' | sort -u
+    | awk -F'\t' -v skip=" ${SKIP_PROJECTS:-} " \
+        '$1 != "" && $2 != "" && index(skip, " " $1 " ") == 0' \
+    | sort -u
 }
 
 # Print the names of running containers that are not part of a compose
