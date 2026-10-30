@@ -16,7 +16,7 @@ Cron runs `flock … borgmatic` daily as root. `flock` takes the lock shared wit
 6. **Monitoring.** borgmatic pings `HCHK_SERVER_BACKUP` on start, success and failure, with the log attached.
 7. **Time Machine (optional).** If `TIMEMACHINE_DIRS` is set, borgmatic then runs a second config, `/etc/borgmatic.d/timemachine.yaml`: it stops Samba (`TIMEMACHINE_SERVICE`, default `smbd`), writes one `timemachine-<date>` archive of all those folders to **its own repository on the offsite machine** (`BORG_REPO_OFFSITE_TMCHN`, label `offsite-tmchn`; nothing goes to the local repository), starts Samba again (also on errors), prunes those archives by the same rules, and pings `HCHK_TIMEMACHINE_BACKUP`. The Macs' own Time Machine backups are the local copy, so the main archive excludes these folders.
 
-Containers are also started again if any step fails. If borgmatic itself is killed mid-run, the next backup starts them again, or run `sudo /opt/homeserver-ops/hooks/containers.sh start` by hand.
+Containers are also started again if any step fails. If borgmatic itself is killed mid-run, the next backup starts them again, or run `sudo <INSTALL_DIR>/hooks/containers.sh start` by hand (`<INSTALL_DIR>` is where you cloned this repository, see [Setup](#setup)).
 
 There are no file system snapshots. Container data is consistent because the containers are stopped. The rest is mostly configuration that rarely changes. If borg reports "file changed while we backed it up" for a busy file, such as a log, add it to `EXTRA_EXCLUDES`.
 
@@ -34,6 +34,20 @@ There are no file system snapshots. Container data is consistent because the con
 
 ## Setup
 Steps marked **server** run on the homeserver, steps marked **offsite** on the offsite machine: another machine you reach over SSH, e.g. a Raspberry Pi at a friend's or family member's place. If it is outside your network, make it reachable over SSH, e.g. via Tailscale. The server gets a dedicated SSH key that can do nothing but add backups to that one repository.
+
+**Placeholders.** The commands and config snippets below contain placeholders in angle brackets. Replace each one with your own value before running or saving anything; the `<…>` are not shell syntax, and a command still containing one will fail or do the wrong thing. Use the same value everywhere a placeholder appears.
+
+| Placeholder | Meaning | Example |
+| --- | --- | --- |
+| `<INSTALL_DIR>` | Where you clone this repository on the server | `/opt/homeserver-ops` |
+| `<LOGS_DIR>` | Directory for the cron logs; the same as `LOGS_DIR` in `CONFIG.sh` | `/var/log/homeserver-ops` |
+| `<OFFSITE_ADDRESS>` | Host name or IP address of the offsite machine, as reachable from the server (and from your laptop) | `pi.tailnet-name.ts.net` |
+| `<OFFSITE_HOST>` | SSH host alias the server uses for the offsite machine, defined in step 3 | `borg-offsite` |
+| `<BORG_USER>` | Account on the offsite machine that receives the backups | `borg` |
+| `<OFFSITE_DIR>` | Folder on the offsite machine that holds the repositories, owned by `<BORG_USER>` | `/home/borg/backups` |
+| `<ADMIN_USER>` | Your own admin login on the offsite machine | `alice` |
+
+The [Restore](#restore) examples also use `<DOCKER_BINDS_DIR>` and `<TIMEMACHINE_DIR>` (one folder from `TIMEMACHINE_DIRS`) for your values from `CONFIG.sh`.
 
 ### 1. Dependencies
 - **borg 1.4** (≥ 1.4, < 2) from the distribution: `sudo apt install borgbackup` (Fedora: `sudo dnf install borgbackup`). borg 2 uses a new, incompatible repository format.
@@ -53,8 +67,8 @@ Update it later with `sudo env UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/lo
 
 ### 2. Clone and configure the scripts (server)
 ```bash
-sudo git clone https://github.com/mxreyer/homeserver-ops.git /opt/homeserver-ops
-cd /opt/homeserver-ops
+sudo git clone https://github.com/mxreyer/homeserver-ops.git <INSTALL_DIR>
+cd <INSTALL_DIR>
 sudo cp CONFIG.template.sh CONFIG.sh   # then fill it in, including the "Backup" section
 ```
 To back up Time Machine sparse bundles offsite, also set `TIMEMACHINE_DIRS` (space-separated folders), `HCHK_TIMEMACHINE_BACKUP`, `BORG_REPO_OFFSITE_TMCHN` (see step 3) and, on Fedora, `TIMEMACHINE_SERVICE="smb"`. Their first upload sends the whole bundles to the offsite machine, which can take days over the internet, with Samba stopped meanwhile. Seed it while the offsite machine is still on your home network, or start it at a convenient time with `sudo borgmatic --config /etc/borgmatic.d/timemachine.yaml create --verbosity 1`.
@@ -63,8 +77,8 @@ Put a long random passphrase in `.borg-pass` (first line only) and run `sudo chm
 ### 3. Prepare the offsite machine
 1. **Offsite:** install borg (same major version as on the server, `sudo apt install borgbackup`), create a user without a password and its backup folder:
    ```bash
-   sudo adduser --disabled-password --gecos "" borg
-   sudo -u borg mkdir -p /home/borg/backups
+   sudo adduser --disabled-password --gecos "" <BORG_USER>
+   sudo -u <BORG_USER> mkdir -p <OFFSITE_DIR>
    ```
    (borg creates the repository folders itself in step 5.)
 2. **Server:** create a dedicated key for root (borgmatic runs as root), without a passphrase so cron can use it, and a host alias for it:
@@ -72,24 +86,24 @@ Put a long random passphrase in `.borg-pass` (first line only) and run `sudo chm
    sudo ssh-keygen -t ed25519 -N "" -C "borg@homeserver" -f /root/.ssh/id_ed25519_borg
    sudo tee -a /root/.ssh/config > /dev/null <<'END'
    # HostName: the offsite machine's address
-   Host borg-offsite
-       HostName offsite.example
-       User borg
+   Host <OFFSITE_HOST>
+       HostName <OFFSITE_ADDRESS>
+       User <BORG_USER>
        IdentityFile /root/.ssh/id_ed25519_borg
        IdentitiesOnly yes
    END
    sudo cat /root/.ssh/id_ed25519_borg.pub   # copy this for the next step
    ```
-3. **Offsite:** allow that key to run nothing but borg, append-only, on your repositories. With Time Machine backups, add the second `--restrict-to-repository /home/borg/backups/timemachine`; otherwise leave it out:
+3. **Offsite:** allow that key to run nothing but borg, append-only, on your repositories. With Time Machine backups, add the second `--restrict-to-repository <OFFSITE_DIR>/timemachine`; otherwise leave it out:
    ```bash
-   sudo install -d -m 700 -o borg -g borg /home/borg/.ssh
-   echo 'command="borg serve --append-only --restrict-to-repository /home/borg/backups/homeserver --restrict-to-repository /home/borg/backups/timemachine",restrict ssh-ed25519 AAAA… borg@homeserver' \
-     | sudo tee /home/borg/.ssh/authorized_keys > /dev/null
-   sudo chown borg:borg /home/borg/.ssh/authorized_keys && sudo chmod 600 /home/borg/.ssh/authorized_keys
+   sudo install -d -m 700 -o <BORG_USER> -g <BORG_USER> /home/<BORG_USER>/.ssh
+   echo 'command="borg serve --append-only --restrict-to-repository <OFFSITE_DIR>/homeserver --restrict-to-repository <OFFSITE_DIR>/timemachine",restrict ssh-ed25519 AAAA… borg@homeserver' \
+     | sudo tee /home/<BORG_USER>/.ssh/authorized_keys > /dev/null
+   sudo chown <BORG_USER>:<BORG_USER> /home/<BORG_USER>/.ssh/authorized_keys && sudo chmod 600 /home/<BORG_USER>/.ssh/authorized_keys
    ```
    With `--append-only`, the server can only *add* to these repositories. The server holds the borg passphrase and this SSH key, so an attacker who takes over the server (e.g. ransomware) could otherwise use them to delete the offsite archives too. The restriction lives on the offsite machine, so the server cannot lift it.
-4. **Server:** connect once to confirm the offsite machine's host key (cron cannot answer that question later): `sudo ssh borg-offsite true`. Answer `yes`. It then prints borg's help text instead of running `true`, because the key may only run borg. That is expected.
-5. **Server:** set `BORG_REPO_OFFSITE="ssh://borg-offsite/home/borg/backups/homeserver"` in `CONFIG.sh`, and with Time Machine backups also `BORG_REPO_OFFSITE_TMCHN="ssh://borg-offsite/home/borg/backups/timemachine"`. The paths must match the ones in `authorized_keys` exactly.
+4. **Server:** connect once to confirm the offsite machine's host key (cron cannot answer that question later): `sudo ssh <OFFSITE_HOST> true`. Answer `yes`. It then prints borg's help text instead of running `true`, because the key may only run borg. That is expected.
+5. **Server:** set `BORG_REPO_OFFSITE="ssh://<OFFSITE_HOST><OFFSITE_DIR>/homeserver"` in `CONFIG.sh`, and with Time Machine backups also `BORG_REPO_OFFSITE_TMCHN="ssh://<OFFSITE_HOST><OFFSITE_DIR>/timemachine"`. The paths must match the ones in `authorized_keys` exactly.
 
 ### 4. Generate the borgmatic config (server)
 ```bash
@@ -122,7 +136,7 @@ The file name starts with `01-` on purpose: sshd uses the first value it reads, 
 **Administer the offsite machine from another device** (e.g. your laptop) with a key that never sits on the server, and make sure no other key from the server is in any `authorized_keys` there. Otherwise an attacker on the server could bypass the restriction. To protect that admin login against malware on the laptop as well, add a one-time code:
 
 #### Optional: admin logins with a one-time code
-With this, your admin login on the offsite machine needs the SSH key **and** a 6-digit code from an authenticator app on your phone (e.g. 2FAS). Malware on your laptop then cannot log in on its own, even with your key. The borg key keeps working without a code, so the nightly backups are not affected. Replace `admin` with your login name.
+With this, your admin login on the offsite machine needs the SSH key **and** a 6-digit code from an authenticator app on your phone (e.g. 2FAS). Malware on your laptop then cannot log in on its own, even with your key. The borg key keeps working without a code, so the nightly backups are not affected.
 
 Keep one SSH session to the offsite machine open the whole time and test from a second terminal, so a mistake cannot lock you out.
 
@@ -138,7 +152,7 @@ Keep one SSH session to the offsite machine open the whole time and test from a 
    # restricted borg key) keeps key-only logins, so unattended backups still work.
    KbdInteractiveAuthentication yes
    AuthenticationMethods publickey
-   Match User admin
+   Match User <ADMIN_USER>
        AuthenticationMethods publickey,keyboard-interactive
    ```
    It has to be a drop-in: the main `sshd_config` sets `KbdInteractiveAuthentication no` further down, and sshd uses the first value it reads.
@@ -151,25 +165,25 @@ Keep one SSH session to the offsite machine open the whole time and test from a 
 4. **Check and apply:**
    ```bash
    sudo sshd -t                                                                    # no output: valid
-   sudo sshd -T -C user=admin,host=x,addr=127.0.0.1 | grep authenticationmethods   # publickey,keyboard-interactive
-   sudo sshd -T -C user=borg,host=x,addr=127.0.0.1  | grep authenticationmethods   # publickey
+   sudo sshd -T -C user=<ADMIN_USER>,host=x,addr=127.0.0.1 | grep authenticationmethods   # publickey,keyboard-interactive
+   sudo sshd -T -C user=<BORG_USER>,host=x,addr=127.0.0.1  | grep authenticationmethods   # publickey
    sudo systemctl reload ssh   # on Fedora: sshd
    ```
-5. **Test, with the old session still open:** `ssh admin@<offsite machine>` from your laptop now asks for `Verification code:` after the key. From the server, `sudo borgmatic repo-list --repository offsite` still works without a code.
+5. **Test, with the old session still open:** `ssh <ADMIN_USER>@<OFFSITE_ADDRESS>` from your laptop now asks for `Verification code:` after the key. From the server, `sudo borgmatic repo-list --repository offsite` still works without a code.
 
 Codes only work if the offsite machine's clock is right (`timedatectl` shows "System clock synchronized: yes"). A Raspberry Pi has no battery-backed clock: right after a power cut, before it has network, use a scratch code or wait until the time has synced. Enable your authenticator app's backup, so a lost phone does not lock you out.
 
 ### 8. Cron (server, root's crontab: `sudo crontab -e`)
 ```bash
 # Backup - daily at 3 AM; the lock keeps it and the update from overlapping
-0 3 * * * flock -w 14400 /run/lock/homeserver-ops.lock borgmatic --verbosity 1 >> /path/to/logs/backup.log 2>&1
+0 3 * * * flock -w 14400 /run/lock/homeserver-ops.lock borgmatic --verbosity 1 >> <LOGS_DIR>/backup.log 2>&1
 # Full data verification of the local repository - 1 Jan and 1 Jul at 5 AM, after the backup
-0 5 1 1,7 * flock -w 14400 /run/lock/homeserver-ops.lock borgmatic check --only data --force --repository local --verbosity 1 >> /path/to/logs/backup-verify.log 2>&1
+0 5 1 1,7 * flock -w 14400 /run/lock/homeserver-ops.lock borgmatic check --only data --force --repository local --verbosity 1 >> <LOGS_DIR>/backup-verify.log 2>&1
 # Container updates - weekly on Monday at 5 AM; refuses to run without a backup from the last 26h
-0 5 * * 1 /opt/homeserver-ops/auto-container-update.sh >> /path/to/logs/auto-container-update.log 2>&1
+0 5 * * 1 <INSTALL_DIR>/auto-container-update.sh >> <LOGS_DIR>/auto-container-update.log 2>&1
 # Health checks
-*/30 * * * * /opt/homeserver-ops/server-health-ping.sh >> /path/to/logs/health.log 2>&1
-*/30 * * * * /opt/homeserver-ops/webservice-health-ping.sh >> /path/to/logs/webservice-health.log 2>&1
+*/30 * * * * <INSTALL_DIR>/server-health-ping.sh >> <LOGS_DIR>/health.log 2>&1
+*/30 * * * * <INSTALL_DIR>/webservice-health-ping.sh >> <LOGS_DIR>/webservice-health.log 2>&1
 ```
 Cron's `PATH` may not include `/usr/local/bin`, where the uv install above puts borgmatic. If so, use the full path, e.g. `/usr/local/bin/borgmatic`.
 
@@ -182,8 +196,8 @@ sudo borgmatic --verbosity 1
 ```
 Then check that the offsite restriction works:
 - `sudo borgmatic repo-list --repository offsite` lists the archives (with Time Machine backups, `--repository offsite-tmchn` lists the `timemachine-…` ones);
-- `sudo ssh borg-offsite ls /` prints only borg's help text, no files;
-- `sudo borg list ssh://borg-offsite/home/borg/backups/other` fails with "Repository path not allowed" (use any path *other* than your repository's).
+- `sudo ssh <OFFSITE_HOST> ls /` prints only borg's help text, no files;
+- `sudo borg list ssh://<OFFSITE_HOST><OFFSITE_DIR>/other` fails with "Repository path not allowed" (use any path *other* than your repository's).
 
 ## Repository checks
 borg can check a repository at three levels. The schedule is sized for repositories of several TB, and all results go to `HCHK_SERVER_BACKUP`:
@@ -204,16 +218,17 @@ None of these replaces a restore drill (see [Maintenance](#maintenance-every-few
 sudo borgmatic repo-list --repository local          # list archives
 sudo borgmatic mount --repository local --archive latest --mount-point /mnt/restore
 sudo borgmatic umount --mount-point /mnt/restore
-# Extract one service's data back into place (paths are stored without the leading /)
+# Extract one service's data back into place (paths are stored without the leading /,
+# so write <DOCKER_BINDS_DIR> without it too, e.g. srv/docker)
 sudo borgmatic extract --repository local --archive latest \
-     --path srv/docker/paperless --path var/lib/docker/volumes/paperless_data --destination /
+     --path <DOCKER_BINDS_DIR>/paperless --path var/lib/docker/volumes/paperless_data --destination /
 ```
 Stop the service before extracting its data, then start it again.
 
 With Time Machine backups configured, their archives live in their own offsite repository, labelled `offsite-tmchn`. To restore one Mac's sparse bundle (stop Samba first: `sudo systemctl stop smbd`):
 ```bash
 sudo borgmatic extract --repository offsite-tmchn --archive latest \
-     --path mnt/backup/tmchn/contracting --destination /
+     --path <TIMEMACHINE_DIR>/<bundle> --destination /   # without the leading /, like above
 ```
 
 For the database dumps and app exports, follow the restore notes in the header of each `exports/<service>.sh`.
@@ -225,23 +240,23 @@ The append-only offsite repositories keep growing until you compact them (step 3
 
 1. **Restore drill.** Restore one service from the latest archive onto a scratch machine or into a temporary directory, and start it (see [Restore](#restore)). Check that its files are intact and readable: ransomware would leave encrypted garbage in the newest archives. A backup you have never restored from is only a hope.
    - **Alternate between the repositories** (`--repository local` / `--repository offsite`). The offsite repository gets no full data check, so restoring from it is its real test.
-   - **Once a year, use your recovery material instead of the server's files:** `sudo borg list ssh://borg-offsite/home/borg/backups/homeserver` asks for the passphrase; type it from your password manager, not from `.borg-pass`. Also compare `sudo borgmatic key export --repository local` and `--repository offsite` with the key exports stored there. That proves you could recover after losing the server.
+   - **Once a year, use your recovery material instead of the server's files:** `sudo borg list ssh://<OFFSITE_HOST><OFFSITE_DIR>/homeserver` asks for the passphrase; type it from your password manager, not from `.borg-pass`. Also compare `sudo borgmatic key export --repository local` and `--repository offsite` with the key exports stored there. That proves you could recover after losing the server.
 2. **Check the offsite archive list.** On the server: `sudo borgmatic repo-list --repository offsite` should show the recent daily, weekly and monthly archives (retention: 7 daily, 4 weekly, 12 monthly). If Time Machine backups are configured, check `sudo borgmatic repo-list --repository offsite-tmchn` the same way. If archives are missing that the retention rules would have kept, **stop here and don't compact**: someone may have deleted them. Roll the repository back instead, following "Append-only mode" in borg's [usage notes](https://borgbackup.readthedocs.io/en/stable/usage/notes.html).
 3. **Compact the offsite repositories.** Only if steps 1 and 2 look fine, from your admin login on the offsite machine (not through the server's restricted key):
    ```bash
-   sudo -u borg borg compact /home/borg/backups/homeserver
-   sudo -u borg borg compact /home/borg/backups/timemachine   # only with Time Machine backups
+   sudo -u <BORG_USER> borg compact <OFFSITE_DIR>/homeserver
+   sudo -u <BORG_USER> borg compact <OFFSITE_DIR>/timemachine   # only with Time Machine backups
    ```
    This makes the pruned deletions final and frees their space. It needs no passphrase.
 4. **Audit the offsite machine's access,** from your admin login there:
    ```bash
-   sudo cat /home/borg/.ssh/authorized_keys ~/.ssh/authorized_keys
+   sudo cat /home/<BORG_USER>/.ssh/authorized_keys ~/.ssh/authorized_keys
    sudo ls /root/.ssh/authorized_keys 2>/dev/null   # should not exist
    sudo sshd -T | grep -E '^(passwordauthentication|permitrootlogin) '   # both "no"
    ```
-   The borg user must have only the restricted backup line (`command="borg serve --append-only --restrict-to-repository …",restrict …`, listing only your repositories: `homeserver` and, with Time Machine backups, `timemachine`), your admin user only your laptop's key, and no key from the server may appear anywhere else. If you set up the one-time code, `sudo sshd -T -C user=admin,host=x,addr=127.0.0.1 | grep authenticationmethods` must still show `publickey,keyboard-interactive`.
+   The `<BORG_USER>` user must have only the restricted backup line (`command="borg serve --append-only --restrict-to-repository …",restrict …`, listing only your repositories: `homeserver` and, with Time Machine backups, `timemachine`), your admin user only your laptop's key, and no key from the server may appear anywhere else. If you set up the one-time code, `sudo sshd -T -C user=<ADMIN_USER>,host=x,addr=127.0.0.1 | grep authenticationmethods` must still show `publickey,keyboard-interactive`.
 5. **Update the software.**
-   - Server: `sudo apt update && sudo apt upgrade` (includes borg), `sudo env UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool upgrade borgmatic`, and this repository: `cd /opt/homeserver-ops && sudo git pull && sudo ./configure-borgmatic.sh` (shows the config changes).
+   - Server: `sudo apt update && sudo apt upgrade` (includes borg), `sudo env UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin uv tool upgrade borgmatic`, and this repository: `cd <INSTALL_DIR> && sudo git pull && sudo ./configure-borgmatic.sh` (shows the config changes).
    - Offsite machine: `sudo apt update && sudo apt upgrade`, or enable `unattended-upgrades` there.
    - Keep borg on the same major version on both machines: borg 2 is not compatible with these repositories.
 
@@ -263,5 +278,5 @@ The append-only offsite repositories keep growing until you compact them (step 3
 - **Pin major versions** in your compose files (e.g. `postgres:16`). `auto-container-update.sh` then applies only minor updates, and you do major upgrades by hand after reading the release notes.
 - **Every few months:** restore drill, offsite archive check, compaction, access audit and updates, see [Maintenance](#maintenance-every-few-months).
 - **Use a Healthchecks instance that does not run on this server** for the `HCHK_*` URLs, e.g. hc-ping.com. A self-hosted one goes down with the server it is supposed to watch.
-- **Moving Time Machine archives out of the server's offsite repository** (only if you ran an earlier version that wrote them there): after the first run into the new repository, from your admin login on the offsite machine run `sudo -u borg borg delete --glob-archives 'timemachine-*' /home/borg/backups/homeserver` (it asks for the passphrase; type it from your password manager), then `sudo -u borg borg compact /home/borg/backups/homeserver`.
+- **Moving Time Machine archives out of the server's offsite repository** (only if you ran an earlier version that wrote them there): after the first run into the new repository, from your admin login on the offsite machine run `sudo -u <BORG_USER> borg delete --glob-archives 'timemachine-*' <OFFSITE_DIR>/homeserver` (it asks for the passphrase; type it from your password manager), then `sudo -u <BORG_USER> borg compact <OFFSITE_DIR>/homeserver`.
 - To add an export for a new service, add an executable `exports/<project>.sh` named after its compose project, and optionally set `HCHK_<PROJECT>`. It runs automatically whenever that project is running.
