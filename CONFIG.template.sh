@@ -14,7 +14,7 @@ STATE_DIR=""          # optional; defaults to /var/lib/homeserver-ops
 
 # Backup (borgmatic, via configure-borgmatic.sh)
 BORG_REPO_LOCAL=""    # local repository, e.g. /mnt/backup/homeserver
-BORG_REPO_OFFSITE=""  # offsite repository, e.g. ssh://borg-offsite/home/borg/backups/homeserver
+BORG_REPO_OFFSITE=""  # offsite repository, e.g. ssh://<OFFSITE_HOST><OFFSITE_DIR>/homeserver (see README)
 HCHK_SERVER_BACKUP="" # Healthchecks URL for the backup
 BORG_PASS_FILE=""     # optional; passphrase file, defaults to .borg-pass in this repository
 EXTRA_BACKUP_DIRS=""  # optional; space-separated directories to back up as well
@@ -24,7 +24,7 @@ TIMEMACHINE_DIRS=""   # optional; space-separated folders with Time Machine spar
 TIMEMACHINE_SERVICE="" # optional; Samba service stopped while they are archived, defaults to smbd (Fedora: smb)
 HCHK_TIMEMACHINE_BACKUP="" # Healthchecks URL for the Time Machine backup; required with TIMEMACHINE_DIRS
 BORG_REPO_OFFSITE_TMCHN="" # their own offsite repository; required with TIMEMACHINE_DIRS,
-                      # e.g. ssh://borg-offsite/home/borg/backups/timemachine
+                      # e.g. ssh://<OFFSITE_HOST><OFFSITE_DIR>/timemachine
 
 # Healthchecks (use an instance that does not run on this server)
 HCHK_SERVER_PING=""
