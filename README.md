@@ -176,9 +176,9 @@ Codes only work if the offsite machine's clock is right (`timedatectl` shows "Sy
 ### 8. Cron (server, root's crontab: `sudo crontab -e`)
 ```bash
 # Backup - daily at 3 AM; the lock keeps it and the update from overlapping
-0 3 * * * flock -w 14400 /run/lock/homeserver-ops.lock borgmatic --verbosity 1 >> <LOGS_DIR>/backup.log 2>&1
+0 3 * * * flock -w 14400 /run/homeserver-ops.lock borgmatic --verbosity 1 >> <LOGS_DIR>/backup.log 2>&1
 # Full data verification of the local repository - 1 Jan and 1 Jul at 5 AM, after the backup
-0 5 1 1,7 * flock -w 14400 /run/lock/homeserver-ops.lock borgmatic check --only data --force --repository local --verbosity 1 >> <LOGS_DIR>/backup-verify.log 2>&1
+0 5 1 1,7 * flock -w 14400 /run/homeserver-ops.lock borgmatic check --only data --force --repository local --verbosity 1 >> <LOGS_DIR>/backup-verify.log 2>&1
 # Container updates - weekly on Monday at 5 AM; refuses to run without a backup from the last 26h
 0 5 * * 1 <INSTALL_DIR>/auto-container-update.sh >> <LOGS_DIR>/auto-container-update.log 2>&1
 # Health checks
