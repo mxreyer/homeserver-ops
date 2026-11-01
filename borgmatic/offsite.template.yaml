@@ -19,28 +19,11 @@ keep_weekly: 8
 keep_monthly: 24
 keep_yearly: 5
 
-# The same hooks as the local config, except the success marker: the daily
-# local backup alone provides the fresh backup auto-container-update.sh needs
+# The success marker for auto-container-update.sh comes from the daily local
+# backup only, so the offsite config has just the shared hooks
 commands:
-    # Once per run, while all containers are still up
-    - before: configuration
-      when: [create]
-      run:
-          - ${REPO_DIR}/hooks/pkglist.sh
-          - ${REPO_DIR}/hooks/exports.sh
-    # Containers are down only while the archive is written; prune, compact
-    # and check run with them up again
-    - before: action
-      when: [create]
-      run:
-          - ${REPO_DIR}/hooks/containers.sh stop
-    - after: action
-      when: [create]
-      run:
-          - ${REPO_DIR}/hooks/containers.sh start
-    - after: error
-      run:
-          - ${REPO_DIR}/hooks/containers.sh start
+    # Shared with the local config, from borgmatic/commands.template.yaml
+${COMMON_COMMANDS_YAML}
 
 healthchecks:
     ping_url: '${HCHK_OFFSITE_BACKUP}'

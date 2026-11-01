@@ -279,8 +279,9 @@ The append-only offsite repositories keep growing until you compact them (step 3
 | --- | --- |
 | `configure-borgmatic.sh` | Generates and installs `/etc/borgmatic/config.yaml`, `/etc/borgmatic.d/offsite.yaml` (and, with `TIMEMACHINE_DIRS`, `/etc/borgmatic.d/timemachine.yaml`) from the templates and `CONFIG.sh` |
 | `borgmatic/common.template.yaml` | Shared part of the local and offsite configs: what to back up, excludes, encryption, checks |
-| `borgmatic/local.template.yaml` | Local config: repository, daily retention, hooks, healthcheck |
-| `borgmatic/offsite.template.yaml` | Offsite config: repository, weekly retention, hooks, healthcheck |
+| `borgmatic/local.template.yaml` | Local config: repository, daily retention, success marker hook, healthcheck |
+| `borgmatic/offsite.template.yaml` | Offsite config: repository, weekly retention, healthcheck |
+| `borgmatic/commands.template.yaml` | Command hooks shared by the local and offsite configs: package list, exports, container stop/start |
 | `borgmatic/timemachine.template.yaml` | Template for the optional Time Machine config: sparse bundles to their own offsite repository |
 | `hooks/` | Commands borgmatic runs: package list, exports, container stop/start, success marker |
 | `exports/<service>.sh` | Database dumps and app exports, one per service |

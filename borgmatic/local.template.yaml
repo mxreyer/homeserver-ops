@@ -19,28 +19,11 @@ keep_daily: 7
 keep_weekly: 4
 keep_monthly: 12
 
-# The hooks live in the homeserver-ops checkout
 commands:
-    # Once per run, while all containers are still up
-    - before: configuration
-      when: [create]
-      run:
-          - ${REPO_DIR}/hooks/pkglist.sh
-          - ${REPO_DIR}/hooks/exports.sh
-    # Containers are down only while the archive is written; prune, compact
-    # and check run with them up again
-    - before: action
-      when: [create]
-      run:
-          - ${REPO_DIR}/hooks/containers.sh stop
-    - after: action
-      when: [create]
-      run:
-          - ${REPO_DIR}/hooks/containers.sh start
-    - after: error
-      run:
-          - ${REPO_DIR}/hooks/containers.sh start
-    # Record the successful backup that auto-container-update.sh requires
+    # Shared with the offsite config, from borgmatic/commands.template.yaml
+${COMMON_COMMANDS_YAML}
+    # Local only: record the successful backup that auto-container-update.sh
+    # requires (the daily local backup alone provides it)
     - after: configuration
       when: [create]
       states: [finish]
