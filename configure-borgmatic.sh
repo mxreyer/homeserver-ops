@@ -1,9 +1,13 @@
 #!/bin/bash
 # ==============================================================================
 # Script Name: configure-borgmatic.sh
-# Description: Generates borgmatic's config from borgmatic/config.template.yaml
-#              and the backup settings in CONFIG.sh, validates it and installs
-#              it as /etc/borgmatic/config.yaml (shows the changes first).
+# Description: Generates borgmatic's configs from the templates in borgmatic/
+#              and the backup settings in CONFIG.sh, validates them and
+#              installs them (showing the changes first):
+#              - /etc/borgmatic/config.yaml: daily backup to the local
+#                repository (local.template.yaml + common.template.yaml)
+#              - /etc/borgmatic.d/offsite.yaml: weekly backup to the offsite
+#                repository (offsite.template.yaml + common.template.yaml)
 #              If TIMEMACHINE_DIRS is set, it also installs
 #              /etc/borgmatic.d/timemachine.yaml from
 #              borgmatic/timemachine.template.yaml (backup of the Time Machine
@@ -12,10 +16,11 @@
 #
 # Usage: sudo ./configure-borgmatic.sh
 #        Run it once during setup, and again after changing CONFIG.sh or
-#        pulling updates of this repository. The backup itself (cron) calls
-#        borgmatic directly and does not need this script.
-#        BORGMATIC_CONFIG_FILE=<path> and BORGMATIC_TIMEMACHINE_FILE=<path>
-#        write somewhere else (e.g. for testing).
+#        pulling updates of this repository. The backups themselves (cron)
+#        call borgmatic directly and do not need this script.
+#        BORGMATIC_CONFIG_FILE=<path>, BORGMATIC_OFFSITE_FILE=<path> and
+#        BORGMATIC_TIMEMACHINE_FILE=<path> write somewhere else (e.g. for
+#        testing).
 # ==============================================================================
 
 set -euo pipefail
@@ -24,6 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/CONFIG.sh"
 
 TARGET="${BORGMATIC_CONFIG_FILE:-/etc/borgmatic/config.yaml}"
+OFFSITE_TARGET="${BORGMATIC_OFFSITE_FILE:-/etc/borgmatic.d/offsite.yaml}"
 TIMEMACHINE_TARGET="${BORGMATIC_TIMEMACHINE_FILE:-/etc/borgmatic.d/timemachine.yaml}"
 BORG_PASS_FILE="${BORG_PASS_FILE:-${SCRIPT_DIR}/.borg-pass}"
 TIMEMACHINE_SERVICE="${TIMEMACHINE_SERVICE:-smbd}"
@@ -34,7 +40,7 @@ die() { echo "❌ $*" >&2; exit 1; }
 # === Check the settings ===
 command -v envsubst > /dev/null \
   || die "envsubst is missing: install gettext-base (Debian, Ubuntu, Pi OS) or gettext-envsubst (Fedora)."
-for var in BORG_REPO_LOCAL BORG_REPO_OFFSITE HCHK_SERVER_BACKUP DOCKER_BINDS_DIR; do
+for var in BORG_REPO_LOCAL BORG_REPO_OFFSITE HCHK_SERVER_BACKUP HCHK_OFFSITE_BACKUP DOCKER_BINDS_DIR; do
   [[ -n "${!var:-}" ]] || die "${var} is not set in CONFIG.sh."
 done
 [[ -d "$DOCKER_BINDS_DIR" ]] || die "DOCKER_BINDS_DIR does not exist: ${DOCKER_BINDS_DIR}"
@@ -49,7 +55,7 @@ if (( ${#timemachine_dirs[@]} > 0 )); then
   done
 fi
 # Values are inserted into single-quoted YAML strings and borgmatic commands
-for var in BORG_REPO_LOCAL BORG_REPO_OFFSITE HCHK_SERVER_BACKUP DOCKER_BINDS_DIR \
+for var in BORG_REPO_LOCAL BORG_REPO_OFFSITE HCHK_SERVER_BACKUP HCHK_OFFSITE_BACKUP DOCKER_BINDS_DIR \
            BORG_PASS_FILE REPO_DIR EXTRA_BACKUP_DIRS EXTRA_EXCLUDES \
            TIMEMACHINE_DIRS TIMEMACHINE_SERVICE HCHK_TIMEMACHINE_BACKUP BORG_REPO_OFFSITE_TMCHN; do
   [[ "${!var:-}" != *[\'$'\n']* ]] || die "${var} must not contain quotes or line breaks."
@@ -70,28 +76,30 @@ EXTRA_EXCLUDES_YAML="$(yaml_list "${EXTRA_EXCLUDES:-}")"
 TIMEMACHINE_DIRS_YAML="$(yaml_list "${TIMEMACHINE_DIRS:-}")"
 HCHK_TIMEMACHINE_BACKUP="${HCHK_TIMEMACHINE_BACKUP:-}"
 BORG_REPO_OFFSITE_TMCHN="${BORG_REPO_OFFSITE_TMCHN:-}"
-export BORG_REPO_LOCAL BORG_REPO_OFFSITE HCHK_SERVER_BACKUP DOCKER_BINDS_DIR \
+export BORG_REPO_LOCAL BORG_REPO_OFFSITE HCHK_SERVER_BACKUP HCHK_OFFSITE_BACKUP DOCKER_BINDS_DIR \
        BORG_PASS_FILE REPO_DIR EXTRA_BACKUP_DIRS_YAML EXTRA_EXCLUDES_YAML \
        TIMEMACHINE_DIRS_YAML TIMEMACHINE_SERVICE HCHK_TIMEMACHINE_BACKUP BORG_REPO_OFFSITE_TMCHN
 
 generated="$(mktemp)"
 trap 'rm -f "$generated"' EXIT
 
-# Render template $1, validate it and install it as $2 (showing the changes)
+# Render the templates $2... (concatenated in that order), validate the result
+# and install it as $1 (showing the changes)
 install_config() {
-  local template="$1" target="$2" leftover
+  local target="$1" leftover
+  shift
   # Only these variables are replaced; anything else in ${...} form is left in
   # place and caught below (borgmatic's validation does not notice it)
   # shellcheck disable=SC2016 # the variable names are meant literally here
-  envsubst '${BORG_REPO_LOCAL} ${BORG_REPO_OFFSITE} ${HCHK_SERVER_BACKUP} ${DOCKER_BINDS_DIR}
+  envsubst '${BORG_REPO_LOCAL} ${BORG_REPO_OFFSITE} ${HCHK_SERVER_BACKUP} ${HCHK_OFFSITE_BACKUP} ${DOCKER_BINDS_DIR}
             ${BORG_PASS_FILE} ${REPO_DIR} ${EXTRA_BACKUP_DIRS_YAML} ${EXTRA_EXCLUDES_YAML}
             ${TIMEMACHINE_DIRS_YAML} ${TIMEMACHINE_SERVICE} ${HCHK_TIMEMACHINE_BACKUP}
             ${BORG_REPO_OFFSITE_TMCHN}' \
-    < "$template" > "$generated"
+    < <(cat "$@") > "$generated"
   leftover="$(grep -oE '\$\{[A-Za-z_]+\}' "$generated" | head -n 1 || true)"
-  [[ -z "$leftover" ]] || die "Unknown placeholder ${leftover} in ${template}."
+  [[ -z "$leftover" ]] || die "Unknown placeholder ${leftover} in $*."
   borgmatic config validate --config "$generated" > /dev/null \
-    || die "The generated config from ${template} is not valid; see borgmatic's error above."
+    || die "The generated config for ${target} is not valid; see borgmatic's error above."
 
   if [[ -f "$target" ]] && cmp -s "$generated" "$target"; then
     echo "✅ ${target} is up to date."
@@ -107,10 +115,20 @@ install_config() {
   echo "✅ Installed ${target}."
 }
 
-install_config "${SCRIPT_DIR}/borgmatic/config.template.yaml" "$TARGET"
+install_config "$TARGET" \
+  "${SCRIPT_DIR}/borgmatic/local.template.yaml" "${SCRIPT_DIR}/borgmatic/common.template.yaml"
+install_config "$OFFSITE_TARGET" \
+  "${SCRIPT_DIR}/borgmatic/offsite.template.yaml" "${SCRIPT_DIR}/borgmatic/common.template.yaml"
 if (( ${#timemachine_dirs[@]} > 0 )); then
-  install_config "${SCRIPT_DIR}/borgmatic/timemachine.template.yaml" "$TIMEMACHINE_TARGET"
+  install_config "$TIMEMACHINE_TARGET" "${SCRIPT_DIR}/borgmatic/timemachine.template.yaml"
 elif [[ -f "$TIMEMACHINE_TARGET" ]]; then
   rm -f "$TIMEMACHINE_TARGET"
   echo "✅ Removed ${TIMEMACHINE_TARGET} (TIMEMACHINE_DIRS is not set)."
+fi
+
+# A borgmatic cron line without --config runs every config, so the offsite and
+# Time Machine backups would still run daily (crontab from before the split)
+if crontab -l 2>/dev/null | grep -v '^[[:space:]]*#' | grep -w borgmatic | grep -vq -- '--config'; then
+  echo "⚠️  root's crontab runs borgmatic without --config, which runs the local, offsite"
+  echo "   and Time Machine backups together. Update it to the cron lines in the README (step 8)."
 fi
