@@ -1,0 +1,27 @@
+# ==============================================================================
+# Command hooks shared by the local and the offsite config. configure-borgmatic.sh
+# inserts these list items where ${COMMON_COMMANDS_YAML} appears below
+# "commands:" in local.template.yaml and offsite.template.yaml. Lines starting
+# with "#" in the first column (this header) are left out; keep the items
+# indented by four spaces.
+# ==============================================================================
+    # The hooks live in the homeserver-ops checkout.
+    # Once per run, while all containers are still up
+    - before: configuration
+      when: [create]
+      run:
+          - ${REPO_DIR}/hooks/pkglist.sh
+          - ${REPO_DIR}/hooks/exports.sh
+    # Containers are down only while the archive is written; prune, compact
+    # and check run with them up again
+    - before: action
+      when: [create]
+      run:
+          - ${REPO_DIR}/hooks/containers.sh stop
+    - after: action
+      when: [create]
+      run:
+          - ${REPO_DIR}/hooks/containers.sh start
+    - after: error
+      run:
+          - ${REPO_DIR}/hooks/containers.sh start

@@ -8,6 +8,7 @@
 #                repository (local.template.yaml + common.template.yaml)
 #              - /etc/borgmatic.d/offsite.yaml: weekly backup to the offsite
 #                repository (offsite.template.yaml + common.template.yaml)
+#              Both get the command hooks in commands.template.yaml.
 #              If TIMEMACHINE_DIRS is set, it also installs
 #              /etc/borgmatic.d/timemachine.yaml from
 #              borgmatic/timemachine.template.yaml (backup of the Time Machine
@@ -76,9 +77,15 @@ EXTRA_EXCLUDES_YAML="$(yaml_list "${EXTRA_EXCLUDES:-}")"
 TIMEMACHINE_DIRS_YAML="$(yaml_list "${TIMEMACHINE_DIRS:-}")"
 HCHK_TIMEMACHINE_BACKUP="${HCHK_TIMEMACHINE_BACKUP:-}"
 BORG_REPO_OFFSITE_TMCHN="${BORG_REPO_OFFSITE_TMCHN:-}"
+export REPO_DIR
+# The hooks shared by the local and offsite configs, without the header
+# comment, with their own placeholders already filled in
+# shellcheck disable=SC2016 # the variable name is meant literally here
+COMMON_COMMANDS_YAML="$(grep -v '^#' "${SCRIPT_DIR}/borgmatic/commands.template.yaml" | envsubst '${REPO_DIR}')"
 export BORG_REPO_LOCAL BORG_REPO_OFFSITE HCHK_SERVER_BACKUP HCHK_OFFSITE_BACKUP DOCKER_BINDS_DIR \
        BORG_PASS_FILE REPO_DIR EXTRA_BACKUP_DIRS_YAML EXTRA_EXCLUDES_YAML \
-       TIMEMACHINE_DIRS_YAML TIMEMACHINE_SERVICE HCHK_TIMEMACHINE_BACKUP BORG_REPO_OFFSITE_TMCHN
+       TIMEMACHINE_DIRS_YAML TIMEMACHINE_SERVICE HCHK_TIMEMACHINE_BACKUP BORG_REPO_OFFSITE_TMCHN \
+       COMMON_COMMANDS_YAML
 
 generated="$(mktemp)"
 trap 'rm -f "$generated"' EXIT
@@ -94,10 +101,10 @@ install_config() {
   envsubst '${BORG_REPO_LOCAL} ${BORG_REPO_OFFSITE} ${HCHK_SERVER_BACKUP} ${HCHK_OFFSITE_BACKUP} ${DOCKER_BINDS_DIR}
             ${BORG_PASS_FILE} ${REPO_DIR} ${EXTRA_BACKUP_DIRS_YAML} ${EXTRA_EXCLUDES_YAML}
             ${TIMEMACHINE_DIRS_YAML} ${TIMEMACHINE_SERVICE} ${HCHK_TIMEMACHINE_BACKUP}
-            ${BORG_REPO_OFFSITE_TMCHN}' \
+            ${BORG_REPO_OFFSITE_TMCHN} ${COMMON_COMMANDS_YAML}' \
     < <(cat "$@") > "$generated"
   leftover="$(grep -oE '\$\{[A-Za-z_]+\}' "$generated" | head -n 1 || true)"
-  [[ -z "$leftover" ]] || die "Unknown placeholder ${leftover} in $*."
+  [[ -z "$leftover" ]] || die "Unknown placeholder ${leftover} in the templates for ${target}."
   borgmatic config validate --config "$generated" > /dev/null \
     || die "The generated config for ${target} is not valid; see borgmatic's error above."
 
