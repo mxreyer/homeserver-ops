@@ -5,10 +5,10 @@
 #              containers, so they run one after another instead of fighting
 #              each other. auto-container-update.sh takes it with
 #              acquire_lock; the backup takes the same file in its cron line
-#              ("flock -w 14400 /run/lock/homeserver-ops.lock borgmatic ...").
+#              ("flock -w 14400 /run/homeserver-ops.lock borgmatic ...").
 # ==============================================================================
 
-LOCK_FILE="${LOCK_FILE:-/run/lock/homeserver-ops.lock}"
+LOCK_FILE="${LOCK_FILE:-/run/homeserver-ops.lock}"
 LOCK_WAIT="${LOCK_WAIT:-14400}" # seconds to wait for a running job to finish
 
 # Take the lock for the rest of the calling script's life. It is released

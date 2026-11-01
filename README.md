@@ -185,11 +185,11 @@ Codes only work if the offsite machine's clock is right (`timedatectl` shows "Sy
 ### 8. Cron (server, root's crontab: `sudo crontab -e`)
 ```bash
 # Local backup - daily at 3 AM; the lock keeps the backups and the update from overlapping
-0 3 * * * flock -w 14400 /run/lock/homeserver-ops.lock borgmatic --config /etc/borgmatic.d/local.yaml --verbosity 1 >> <LOGS_DIR>/backup.log 2>&1
+0 3 * * * flock -w 14400 /run/homeserver-ops.lock borgmatic --config /etc/borgmatic.d/local.yaml --verbosity 1 >> <LOGS_DIR>/backup.log 2>&1
 # Offsite backup - weekly on Sunday at 4 AM, after the local backup (with Time Machine backups, see below)
-0 4 * * 0 flock -w 14400 /run/lock/homeserver-ops.lock borgmatic --config /etc/borgmatic.d/offsite.yaml --verbosity 1 >> <LOGS_DIR>/backup-offsite.log 2>&1
+0 4 * * 0 flock -w 14400 /run/homeserver-ops.lock borgmatic --config /etc/borgmatic.d/offsite.yaml --verbosity 1 >> <LOGS_DIR>/backup-offsite.log 2>&1
 # Full data verification of the local repository - 1 Jan and 1 Jul at 5 AM, after the backup
-0 5 1 1,7 * flock -w 14400 /run/lock/homeserver-ops.lock borgmatic check --config /etc/borgmatic.d/local.yaml --only data --force --repository local --verbosity 1 >> <LOGS_DIR>/backup-verify.log 2>&1
+0 5 1 1,7 * flock -w 14400 /run/homeserver-ops.lock borgmatic check --config /etc/borgmatic.d/local.yaml --only data --force --repository local --verbosity 1 >> <LOGS_DIR>/backup-verify.log 2>&1
 # Container updates - weekly on Monday at 5 AM; refuses to run without a backup from the last 26h
 0 5 * * 1 <INSTALL_DIR>/auto-container-update.sh >> <LOGS_DIR>/auto-container-update.log 2>&1
 # Health checks
@@ -198,7 +198,7 @@ Codes only work if the offsite machine's clock is right (`timedatectl` shows "Sy
 ```
 With Time Machine backups (`TIMEMACHINE_DIRS` set), the weekly line names both offsite configs instead; borgmatic runs them one after the other:
 ```bash
-0 4 * * 0 flock -w 14400 /run/lock/homeserver-ops.lock borgmatic --config /etc/borgmatic.d/offsite.yaml --config /etc/borgmatic.d/timemachine.yaml --verbosity 1 >> <LOGS_DIR>/backup-offsite.log 2>&1
+0 4 * * 0 flock -w 14400 /run/homeserver-ops.lock borgmatic --config /etc/borgmatic.d/offsite.yaml --config /etc/borgmatic.d/timemachine.yaml --verbosity 1 >> <LOGS_DIR>/backup-offsite.log 2>&1
 ```
 Keep the `--config` options: without them, borgmatic runs every config in `/etc/borgmatic.d/`, so the offsite and Time Machine backups would run daily too. Only name `timemachine.yaml` while it exists: borgmatic fails the run on a missing config file. `configure-borgmatic.sh` warns if root's crontab doesn't match your `TIMEMACHINE_DIRS` setting. Set the period of `HCHK_OFFSITE_BACKUP` and `HCHK_TIMEMACHINE_BACKUP` in Healthchecks to 7 days, and `HCHK_SERVER_BACKUP` to 1 day.
 
