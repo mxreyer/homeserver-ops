@@ -27,13 +27,19 @@ BACKUP_DIR="${DOCKER_BINDS_DIR}/mealie/backup"
 response=$(mktemp)
 trap 'rm -f "$response"' EXIT
 
+# Calls the API; the key goes to curl on stdin, so it never shows up in the
+# process list. Prints the HTTP status, writes the body to $response.
+api() {
+  printf 'Authorization: Bearer %s\n' "${APIKY_MEALIE}" \
+    | curl -s -w "%{http_code}" -o "$response" -X "$1" "$2" -H "Accept: application/json" -H @-
+}
+
 # Leftovers from an earlier failed run would be picked up as "the" backup
 rm -rf "${MEALIE_BACKUP_FOLDER:?}"/*
 
 # === Step 1: Trigger mealie backup ===
 echo "💾 Requesting mealie backup..."
-status=$(curl -s -w "%{http_code}" -o "$response" -X POST "$MEALIE_BACKUP_URL" \
-  -H "Accept: application/json" -H "Authorization: Bearer ${APIKY_MEALIE}")
+status=$(api POST "$MEALIE_BACKUP_URL")
 if [[ "$status" != 201 ]]; then
   echo "❌ Failed to create backup (HTTP ${status}): $(cat "$response")" >&2
   exit 1
@@ -52,8 +58,7 @@ unzip -q "$zipfile" -d "$BACKUP_DIR"
 echo "✅ Extracted $(basename "$zipfile") to ${BACKUP_DIR}."
 
 # === Step 3: Delete the backup inside mealie ===
-status=$(curl -s -w "%{http_code}" -o "$response" -X DELETE "${MEALIE_BACKUP_URL}/$(basename "$zipfile")" \
-  -H "Accept: application/json" -H "Authorization: Bearer ${APIKY_MEALIE}")
+status=$(api DELETE "${MEALIE_BACKUP_URL}/$(basename "$zipfile")")
 if [[ "$status" != 200 ]]; then
   echo "❌ Failed to delete backup in mealie (HTTP ${status}): $(cat "$response")" >&2
   exit 1
