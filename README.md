@@ -299,3 +299,7 @@ The append-only offsite repositories keep growing until you compact them (step 3
 - **Every few months:** restore drill, offsite archive check, compaction, access audit and updates, see [Maintenance](#maintenance-every-few-months).
 - **Use a Healthchecks instance that does not run on this server** for the `HCHK_*` URLs, e.g. hc-ping.com. A self-hosted one goes down with the server it is supposed to watch.
 - To add an export for a new service, add an executable `exports/<project>.sh` named after its compose project, and optionally set `HCHK_<PROJECT>`. It runs automatically whenever that project is running.
+
+-----
+
+Co-authored with Claude Code (Claude Opus 5.5), as a rewrite of backup scripts I wrote myself.
