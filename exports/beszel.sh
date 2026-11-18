@@ -29,6 +29,13 @@ BACKUP_DIR="${DOCKER_BINDS_DIR}/beszel/backup"
 response=$(mktemp)
 trap 'rm -f "$response"' EXIT
 
+# Calls the API; the key goes to curl on stdin, so it never shows up in the
+# process list. Prints the HTTP status, writes the body to $response.
+api() {
+  printf 'Authorization: Bearer %s\n' "${APIKY_BESZEL}" \
+    | curl -s -w "%{http_code}" -o "$response" -X "$1" "$2" -H "Accept: application/json" -H @-
+}
+
 api_message() { jq -r '.message // ""' "$response" 2>/dev/null || cat "$response"; }
 
 # Leftovers from an earlier failed run would be picked up as "the" backup
@@ -36,8 +43,7 @@ rm -rf "${BESZEL_BACKUP_FOLDER:?}"/*
 
 # === Step 1: Trigger beszel backup ===
 echo "💾 Requesting beszel backup..."
-status=$(curl -s -w "%{http_code}" -o "$response" -X POST "$BESZEL_BACKUP_URL" \
-  -H "Accept: application/json" -H "Authorization: Bearer ${APIKY_BESZEL}")
+status=$(api POST "$BESZEL_BACKUP_URL")
 if [[ "$status" != 204 ]]; then
   echo "❌ Failed to create backup (HTTP ${status}): $(api_message)" >&2
   exit 1
@@ -62,8 +68,7 @@ cp "$attrsfile" "${BACKUP_DIR}/backup.zip.attrs"
 echo "✅ Extracted $(basename "$zipfile") to ${BACKUP_DIR}."
 
 # === Step 3: Delete the backup inside beszel ===
-status=$(curl -s -w "%{http_code}" -o "$response" -X DELETE "${BESZEL_BACKUP_URL}/$(basename "$zipfile")" \
-  -H "Accept: application/json" -H "Authorization: Bearer ${APIKY_BESZEL}")
+status=$(api DELETE "${BESZEL_BACKUP_URL}/$(basename "$zipfile")")
 if [[ "$status" != 204 ]]; then
   echo "❌ Failed to delete backup in beszel (HTTP ${status}): $(api_message)" >&2
   exit 1
