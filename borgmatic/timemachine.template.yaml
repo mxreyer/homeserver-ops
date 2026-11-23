@@ -28,10 +28,14 @@ encryption_passcommand: 'cat ${BORG_PASS_FILE}'
 lock_wait: 600
 statistics: standard
 
-# Weekly, like the server's offsite backup, with the same retention
-keep_weekly: 8
-keep_monthly: 24
-keep_yearly: 5
+# Weekly, like the server's offsite backup, but with a short retention: the
+# bundles already hold the Macs' history, so these archives only have to roll
+# back a destroyed or encrypted bundle. Time Machine rewrites a large part of
+# a bundle every day, so each kept archive costs a few hundred GB of its own.
+# 3 weekly plus the last archive of the 2 months before them reach back about
+# 2 to 3 months.
+keep_weekly: 3
+keep_monthly: 2
 
 # As in the main config: the repository check verifies every stored block on
 # the offsite machine itself, capped at 3 hours per run (the next run continues
