@@ -126,6 +126,13 @@ sudo borgmatic repo-create --encryption repokey
 ```
 This creates every repository in the config: local, offsite and, with Time Machine backups, the Time Machine one.
 
+Then, on the offsite machine, make borg keep some free space in reserve on the offsite repositories. If the disk ever fills up completely, no borg command works any more, not even `borg compact`, which would free the space:
+```bash
+sudo -u <BORG_USER> borg config <OFFSITE_DIR>/homeserver additional_free_space 10G
+sudo -u <BORG_USER> borg config <OFFSITE_DIR>/timemachine additional_free_space 10G   # only with Time Machine backups
+```
+Backups then fail while less than 10 GB would remain free, instead of filling the disk. To recover, lower the reserve temporarily (e.g. to `2G`), compact (see [Maintenance](#maintenance-every-few-months)) and set it back.
+
 ### 6. Store the keys off the server (server, do not skip this)
 The repokey lives inside each repository, and the passphrase lives only on this server. If the server dies, you need **both** to read the offsite copy. Store the passphrase and the key export in a password manager or on paper:
 ```bash
@@ -253,7 +260,7 @@ For the database dumps and app exports, follow the restore notes in the header o
 Practise this regularly: the restore drill is part of the [Maintenance](#maintenance-every-few-months) routine.
 
 ## Maintenance (every few months)
-The append-only offsite repositories keep growing until you compact them (step 3); plan its disk space accordingly.
+The append-only offsite repositories keep growing until you compact them (step 3); plan its disk space accordingly. If the offsite backups fail for lack of space, compact as in step 3, after lowering the `additional_free_space` reserve temporarily if needed ([step 5 of the setup](#5-create-the-repositories-server)).
 
 1. **Restore drill.** Restore one service from the latest archive onto a scratch machine or into a temporary directory, and start it (see [Restore](#restore)). Check that its files are intact and readable: ransomware would leave encrypted garbage in the newest archives. A backup you have never restored from is only a hope.
    - **Alternate between the repositories** (`--repository local` / `--repository offsite`). The offsite repository gets no full data check, so restoring from it is its real test.
