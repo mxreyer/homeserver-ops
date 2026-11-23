@@ -84,6 +84,21 @@ start_containers() {
   return "$rc"
 }
 
+# Pull the images of compose project $1, retrying with a growing delay:
+# registries (notably ghcr.io) sometimes answer with a transient rate-limit
+# error. A retry only fetches the layers that are still missing.
+pull_with_retry() {
+  local project="$1" attempt attempts=3
+  for (( attempt = 1; attempt <= attempts; attempt++ )); do
+    docker compose -p "$project" pull && return 0
+    (( attempt < attempts )) || break
+    echo "   ⚠️  pull of ${project} failed (attempt ${attempt}/${attempts}), retrying in $(( attempt * 30 ))s..." >&2
+    sleep $(( attempt * 30 ))
+  done
+  echo "❌ pull of ${project} failed after ${attempts} attempts." >&2
+  return 1
+}
+
 # Pull new images for every running compose project and recreate only the
 # containers whose image changed. No project is stopped first.
 update_projects() {
@@ -91,7 +106,7 @@ update_projects() {
   echo "🐳 Updating compose projects..."
   while IFS=$'\t' read -r project dir; do
     echo "   updating ${project} (${dir})"
-    (cd "$dir" && docker compose -p "$project" pull && docker compose -p "$project" up -d) < /dev/null || rc=1
+    (cd "$dir" && pull_with_retry "$project" && docker compose -p "$project" up -d) < /dev/null || rc=1
   done < <(running_projects)
   return "$rc"
 }
